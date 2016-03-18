@@ -32,37 +32,73 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Akka, Version=1.0.6.16, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Akka.1.0.6\lib\net45\Akka.dll</HintPath>
+    <Reference Include="Akka, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.1.1.0\lib\net45\Akka.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="Akka.Persistence, Version=1.0.6.17, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Akka.Persistence.1.0.6.17-beta\lib\net45\Akka.Persistence.dll</HintPath>
+    <Reference Include="Akka.Cluster, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.Cluster.1.1.0\lib\net45\Akka.Cluster.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="Cassandra, Version=2.7.0.0, Culture=neutral, PublicKeyToken=10b231fbfc8c4b4d, processorArchitecture=MSIL">
-      <HintPath>..\packages\CassandraCSharpDriver.2.7.3\lib\net40\Cassandra.dll</HintPath>
+    <Reference Include="Akka.Cluster.Tools, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.Cluster.Tools.1.1.0.26-beta\lib\net45\Akka.Cluster.Tools.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="Google.ProtocolBuffers">
-      <HintPath>..\packages\Google.ProtocolBuffers.2.4.1.521\lib\net40\Google.ProtocolBuffers.dll</HintPath>
+    <Reference Include="Akka.Persistence, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.Persistence.1.1.0.26-beta\lib\net45\Akka.Persistence.dll</HintPath>
+      <Private>True</Private>
     </Reference>
-    <Reference Include="Google.ProtocolBuffers.Serialization">
-      <HintPath>..\packages\Google.ProtocolBuffers.2.4.1.521\lib\net40\Google.ProtocolBuffers.Serialization.dll</HintPath>
+    <Reference Include="Akka.Persistence.Query, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.Persistence.Query.1.1.0.26-beta\lib\net45\Akka.Persistence.Query.dll</HintPath>
+      <Private>True</Private>
     </Reference>
-    <Reference Include="LZ4">
-      <HintPath>..\packages\lz4net.1.0.5.93\lib\net40-client\LZ4.dll</HintPath>
+    <Reference Include="Akka.Remote, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.Remote.1.1.0\lib\net45\Akka.Remote.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Akka.Streams, Version=1.1.0.26, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Akka.Streams.1.1.0.26-beta\lib\net45\Akka.Streams.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Cassandra, Version=3.0.0.0, Culture=neutral, PublicKeyToken=10b231fbfc8c4b4d, processorArchitecture=MSIL">
+      <HintPath>..\packages\CassandraCSharpDriver.3.0.7\lib\net40\Cassandra.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Google.ProtocolBuffers, Version=2.4.1.555, Culture=neutral, PublicKeyToken=55f7125234beb589, processorArchitecture=MSIL">
+      <HintPath>..\packages\Google.ProtocolBuffers.2.4.1.555\lib\net40\Google.ProtocolBuffers.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Google.ProtocolBuffers.Serialization, Version=2.4.1.555, Culture=neutral, PublicKeyToken=55f7125234beb589, processorArchitecture=MSIL">
+      <HintPath>..\packages\Google.ProtocolBuffers.2.4.1.555\lib\net40\Google.ProtocolBuffers.Serialization.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Helios, Version=2.1.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Helios.2.1.1\lib\net45\Helios.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="LZ4, Version=1.0.10.93, Culture=neutral, PublicKeyToken=62e1b5ec1eec9bdd, processorArchitecture=MSIL">
+      <HintPath>..\packages\lz4net.1.0.10.93\lib\net4-client\LZ4.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\Packages\Newtonsoft.Json.7.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
+    <Reference Include="Reactive.Streams, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Reactive.Streams.1.0.0-RC1\lib\portable-net45+netcore45\Reactive.Streams.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Collections.Immutable, Version=1.1.36.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Collections.Immutable.1.1.36\lib\portable-net45+win8+wp8+wpa81\System.Collections.Immutable.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Reactive.Streams, Version=1.0.7.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Reactive.Streams.1.0.7.0-beta\lib\net45\System.Reactive.Streams.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Web" />
     <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\SharedAssemblyInfo.cs">
@@ -74,35 +110,57 @@
     <Compile Include="CassandraPersistence.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="SessionManagement\CassandraSession.cs" />
-    <Compile Include="CassandraSettings.cs" />
-    <Compile Include="SessionManagement\SessionSettings.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="SessionManagement\DefaultSessionManager.cs" />
+    <Compile Include="Journal\CassandraJournal.Recovery.cs" />
+    <Compile Include="Journal\PubSubThrottler.cs" />
+    <Compile Include="CassandraSession.cs" />
+    <Compile Include="Compaction\BaseCompactionStrategy.cs" />
+    <Compile Include="Compaction\CassandraCompactionStrategy.cs" />
+    <Compile Include="Compaction\DateTieredCompactionStrategy.cs" />
+    <Compile Include="Compaction\ICassandraCompactionStrategyConfig.cs" />
+    <Compile Include="Compaction\LeveledCompactionStrategy.cs" />
+    <Compile Include="Compaction\SizeTieredCompactionStrategy.cs" />
+    <Compile Include="ConfigSessionProvider.cs" />
+    <Compile Include="ISessionProvider.cs" />
+    <Compile Include="Journal\CassandraStatements.cs" />
+    <Compile Include="Query\AllPersistenceIdsPublisher.cs" />
+    <Compile Include="Query\CassandraReadJournal.cs" />
+    <Compile Include="Query\CassandraReadJournalConfig.cs" />
+    <Compile Include="Query\CassandraReadJournalProvider.cs" />
+    <Compile Include="Query\CassandraReadStatements.cs" />
+    <Compile Include="Query\EventsByPersistenceIdPublisher.cs" />
+    <Compile Include="Query\EventsByTagFetcher.cs" />
+    <Compile Include="Query\EventsByTagPublisher.cs" />
+    <Compile Include="Query\GuidComparer.cs" />
+    <Compile Include="Query\GuidEventEnvelope.cs" />
+    <Compile Include="Query\GuidPersistent.cs" />
+    <Compile Include="Query\QueryActorPublisher.cs" />
+    <Compile Include="Query\SequenceNumbers.cs" />
+    <Compile Include="CassandraPluginConfig.cs" />
     <Compile Include="ExtensionMethods.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="SessionManagement\IManageSessions.cs" />
     <Compile Include="Journal\CassandraJournal.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Journal\CassandraJournalSettings.cs">
+    <Compile Include="Journal\CassandraJournalConfig.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Journal\JournalStatements.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Snapshot\CassandraSnapshotStore.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Snapshot\CassandraSnapshotStoreSettings.cs">
+    <Compile Include="Snapshot\CassandraSnapshotStoreConfig.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Snapshot\SnapshotStoreStatements.cs" />
+    <Compile Include="Snapshot\CassandraStatements.cs" />
+    <Compile Include="Journal\TimeBucket.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Akka.Persistence.Cassandra.nuspec" />
-    <None Include="packages.config" />
+    <None Include="app.config" />
+    <None Include="packages.config">
+      <SubType>Designer</SubType>
+    </None>
     <EmbeddedResource Include="reference.conf" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

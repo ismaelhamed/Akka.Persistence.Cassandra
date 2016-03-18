@@ -1,5 +1,8 @@
-#### 1.0.7 Feb 08 2016 ####
-Place holder for next version.
+#### 1.0.9 Feb 08 2016 ####
+This release adds support for persistence-query and is a port of v0.14 of the JVM plugin.
+
+**Breaking Changes**
+This version does not work with the old schema. Please migrate your data to the new schema before upgrading.
 
 #### 1.0.6 Feb 08 2016 ####
 Upgrades to Akka.NET v1.0.6 internally.

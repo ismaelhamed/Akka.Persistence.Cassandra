@@ -151,6 +151,7 @@ module Nuget =
       match project with
       | "Akka.Cluster" -> preReleaseVersion
       | persistence when persistence.StartsWith("Akka.Persistence") -> preReleaseVersion
+      | stream when stream.StartsWith("Akka.Streams") -> preReleaseVersion
       | _ -> release.NugetVersion
 
 open Nuget
