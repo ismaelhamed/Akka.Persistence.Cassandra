@@ -19,7 +19,6 @@ namespace Akka.Persistence.Cassandra.Snapshot
         private readonly CassandraExtension _cassandraExtension;
         private readonly Serializer _serializer;
         private readonly ILoggingAdapter _log;
-        private readonly bool _publish;
 
         private ISession _session;
         private PreparedStatement _writeSnapshot;
@@ -32,10 +31,6 @@ namespace Akka.Persistence.Cassandra.Snapshot
             _cassandraExtension = CassandraPersistence.Instance.Apply(Context.System);
             _serializer = Context.System.Serialization.FindSerializerForType(SnapshotType);
             _log = Context.System.Log;
-
-            // Here so we can emulate the base class behavior but do deletes async
-            PersistenceExtension persistence = Context.System.PersistenceExtension();
-            _publish = persistence.Settings.Internal.PublishPluginCommands;
         }
 
         protected override void PreStart()
@@ -63,25 +58,6 @@ namespace Akka.Persistence.Cassandra.Snapshot
             _deleteSnapshot = _session.PrepareFormat(SnapshotStoreStatements.DeleteSnapshot, fullyQualifiedTableName);
             _selectSnapshot = _session.PrepareFormat(SnapshotStoreStatements.SelectSnapshot, fullyQualifiedTableName);
             _selectSnapshotMetadata = _session.PrepareFormat(SnapshotStoreStatements.SelectSnapshotMetadata, fullyQualifiedTableName);
-        }
-
-        protected override bool Receive(object message)
-        {
-            // Make deletes async as well, but make sure we still publish like the base class does
-            if (message is DeleteSnapshot)
-            {
-                HandleDeleteAsync((DeleteSnapshot) message, msg => DeleteAsync(msg.Metadata));
-            }
-            else if (message is DeleteSnapshots)
-            {
-                HandleDeleteAsync((DeleteSnapshots) message, msg => DeleteAsync(msg.PersistenceId, msg.Criteria));
-            }
-            else
-            {
-                return base.Receive(message);
-            }
-
-            return true;
         }
 
         protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
@@ -186,11 +162,6 @@ namespace Akka.Persistence.Cassandra.Snapshot
             await _session.ExecuteAsync(batch).ConfigureAwait(false);
         }
 
-        protected override void Saved(SnapshotMetadata metadata)
-        {
-            // No op
-        }
-
         protected override void PostStop()
         {
             base.PostStop();
@@ -199,24 +170,6 @@ namespace Akka.Persistence.Cassandra.Snapshot
             {
                 _cassandraExtension.SessionManager.ReleaseSession(_session);
                 _session = null;
-            }
-        }
-
-        private async Task HandleDeleteAsync<T>(T message, Func<T, Task> handler)
-        {
-            try
-            {
-                // Capture event stream so we can use it after await
-                EventStream es = Context.System.EventStream;
-
-                // Delete async, then publish if necessary
-                await handler(message).ConfigureAwait(false);
-                if (_publish)
-                    es.Publish(message);
-            }
-            catch (Exception e)
-            {
-                _log.Error(e, "Unexpected error while deleting snapshot(s).");
             }
         }
 
