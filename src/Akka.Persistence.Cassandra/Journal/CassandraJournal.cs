@@ -31,21 +31,21 @@ namespace Akka.Persistence.Cassandra.Journal
         private PreparedStatement _selectHeaderSequence;
         private PreparedStatement _selectLastMessageSequence;
         private PreparedStatement _selectMessages;
-        private PreparedStatement _writeDeleteMarker;
         private PreparedStatement _deleteMessagePermanent;
         private PreparedStatement _selectDeletedToSequence;
         private PreparedStatement _selectConfigurationValue;
         private PreparedStatement _writeConfigurationValue;
-        
+        private LoggingRetryPolicy _deleteRetryPolicy;
+
         public CassandraJournal()
         {
             _cassandraExtension = CassandraPersistence.Instance.Apply(Context.System);
             _serializer = Context.System.Serialization.FindSerializerForType(PersistentRepresentationType);
 
             // Use setting from the persistence extension when batch deleting
-//            PersistenceExtension persistence = Context.System.PersistenceExtension();
-            _maxDeletionBatchSize = _cassandraExtension.JournalSettings.MaxResultSize;
-            //_maxDeletionBatchSize = persistence.Settings.Journal.MaxDeletionBatchSize;
+            var journalSettings = _cassandraExtension.JournalSettings;
+            _deleteRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.DeleteRetries));
+            _maxDeletionBatchSize = journalSettings.MaxMessageBatchSize;
         }
         
         protected override void PreStart()
@@ -74,7 +74,6 @@ namespace Akka.Persistence.Cassandra.Journal
             _selectHeaderSequence = _session.PrepareFormat(JournalStatements.SelectHeaderSequence, fullyQualifiedTableName);
             _selectLastMessageSequence = _session.PrepareFormat(JournalStatements.SelectLastMessageSequence, fullyQualifiedTableName);
             _selectMessages = _session.PrepareFormat(JournalStatements.SelectMessages, fullyQualifiedTableName);
-            _writeDeleteMarker = _session.PrepareFormat(JournalStatements.WriteDeleteMarker, fullyQualifiedTableName);
             _deleteMessagePermanent = _session.PrepareFormat(JournalStatements.DeleteMessagePermanent, fullyQualifiedTableName);
             _selectDeletedToSequence = _session.PrepareFormat(JournalStatements.SelectDeletedToSequence, fullyQualifiedTableName);
             _selectConfigurationValue = _session.PrepareFormat(JournalStatements.SelectConfigurationValue, fullyQualifiedTableName);
@@ -294,23 +293,22 @@ namespace Akka.Persistence.Cassandra.Journal
                     // Permanently delete using batches in parallel
                     long batchFrom = deleteFrom;
                     long batchTo;
-                    var batches = new List<Task>();
+                    var deleteTasks = new List<Task>();
                     do
                     {
                         batchTo = Math.Min(batchFrom + _maxDeletionBatchSize - 1L, deleteTo);
-
-                        var batch = new BatchStatement();
                         for (long seq = batchFrom; seq <= batchTo; seq++)
-                            batch.Add(_deleteMessagePermanent.Bind(persistenceId, partitionNumber, seq));
-
-                        batch.Add(_writeDeleteMarker.Bind(persistenceId, partitionNumber, batchTo));
-                        batch.SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency);
-
-                        batches.Add(_session.ExecuteAsync(batch));
+                        {
+                            var deleteStatement = _deleteMessagePermanent.Bind(persistenceId, partitionNumber, seq);
+                            deleteStatement.SetConsistencyLevel( _cassandraExtension.JournalSettings.WriteConsistency);
+                            _deleteRetryPolicy = new LoggingRetryPolicy(_deleteRetryPolicy);
+                            deleteStatement.SetRetryPolicy(_deleteRetryPolicy);
+                            deleteTasks.Add(_session.ExecuteAsync(deleteStatement));
+                        }
                         batchFrom = batchTo + 1L;
                     } while (batchTo < deleteTo);
 
-                    await Task.WhenAll(batches).ConfigureAwait(false);
+                    await Task.WhenAll(deleteTasks).ConfigureAwait(false);
                     
                     // If we've deleted everything we're supposed to, no need to continue
                     if (deleteTo == toSequenceNr)
@@ -390,5 +388,40 @@ namespace Akka.Persistence.Cassandra.Journal
                 _session = null;
             }
         }
+    }
+
+    public class FixedRetryPolicy: IRetryPolicy
+    {
+
+        private readonly int _number;
+
+        public FixedRetryPolicy(int number)
+        {
+            _number = number;
+        }
+
+        public RetryDecision OnReadTimeout(IStatement query, ConsistencyLevel cl, int requiredResponses, int receivedResponses,
+            bool dataRetrieved, int nbRetry)
+        {
+            return Retry(cl, nbRetry);
+        }
+
+        public RetryDecision OnWriteTimeout(IStatement query, ConsistencyLevel cl, string writeType, int requiredAcks, int receivedAcks,
+            int nbRetry)
+        {
+            return Retry(cl, nbRetry);
+        }
+
+        public RetryDecision OnUnavailable(IStatement query, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry)
+        {
+            return Retry(cl, nbRetry);
+        }
+
+        private RetryDecision Retry(ConsistencyLevel cl, int nbRetry)
+        {
+            if (nbRetry < _number) return RetryDecision.Retry(cl);
+            else return RetryDecision.Rethrow();
+        }
+
     }
 }

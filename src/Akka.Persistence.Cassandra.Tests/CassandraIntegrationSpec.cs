@@ -19,6 +19,7 @@ namespace Akka.Persistence.Cassandra.Tests
             akka.test.single-expect-default = 10s
             cassandra-journal.partition-size = 5
             cassandra-journal.max-result-size = 3
+            cassandra-journal.max-message-batch-size = 3
         ");
 
         // Static so that each test run gets a different Id number
@@ -41,11 +42,11 @@ namespace Akka.Persistence.Cassandra.Tests
         public void Cassandra_journal_should_write_and_replay_messages()
         {
             // Start a persistence actor and write some messages to it
-            var actor1 = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId));
+            var actor1 = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId, TestActor));
             WriteAndVerifyMessages(actor1, 1L, 16L);
 
             // Now start a new instance (same persistence Id) and it should recover with those same messages
-            var actor2 = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId));
+            var actor2 = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId, TestActor));
             for (long i = 1L; i <= 16L; i++)
             {
                 string msg = string.Format("a-{0}", i);
@@ -66,19 +67,18 @@ namespace Akka.Persistence.Cassandra.Tests
             TestProbe deleteProbe = CreateTestProbe();
             Sys.EventStream.Subscribe(deleteProbe.Ref, typeof (DeleteMessagesTo));
 
-            var actor1 = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId));
+            var actor1 = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId, TestActor));
             WriteAndVerifyMessages(actor1, 1L, 16L);
 
             // Tell the actor to delete some messages and make sure it's finished
             actor1.Tell(new DeleteToCommand(3L, permanentDelete));
             deleteProbe.ExpectMsg<DeleteMessagesTo>();
-
             // Start a second copy of the actor and verify it starts replaying from the correct spot
-            Sys.ActorOf(Props.Create<PersistentActorA>(_actorId));
+            Sys.ActorOf(Props.Create<PersistentActorA>(_actorId, TestActor));
             for (long i = 4L; i <= 16L; i++)
             {
                 string msg = string.Format("a-{0}", i);
-                ExpectHandled(msg, i, true);
+                ExpectHandled(msg, i, true); // !!!!! FAILS HERE !!!!!
             }
 
             // Delete some more messages and wait for confirmation
@@ -86,7 +86,7 @@ namespace Akka.Persistence.Cassandra.Tests
             deleteProbe.ExpectMsg<DeleteMessagesTo>();
 
             // Start another copy and verify playback again
-            Sys.ActorOf(Props.Create<PersistentActorA>(_actorId));
+            Sys.ActorOf(Props.Create<PersistentActorA>(_actorId, TestActor));
             for (long i = 8L; i <= 16L; i++)
             {
                 string msg = string.Format("a-{0}", i);
@@ -98,7 +98,7 @@ namespace Akka.Persistence.Cassandra.Tests
         public void Cassandra_journal_should_replay_message_incrementally()
         {
             // Write some messages to a Persistent Actor
-            var actor = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId));
+            var actor = Sys.ActorOf(Props.Create<PersistentActorA>(_actorId, TestActor));
             WriteAndVerifyMessages(actor, 1L, 6L);
 
             TestProbe probe = CreateTestProbe();
@@ -135,38 +135,36 @@ namespace Akka.Persistence.Cassandra.Tests
             ExpectHandled("b", 2, false);
 
             // Start the actor again and verify we get a snapshot, followed by the message that wasn't in the snapshot
-            var actor2 = Sys.ActorOf(Props.Create<PersistentActorC>(_actorId, TestActor));
+            Sys.ActorOf(Props.Create<PersistentActorC>(_actorId, TestActor));
             ExpectMsg("offered-a-1");
             ExpectHandled("b", 2, true);
         }
 
-//        [Fact]
-//        public void Persistent_actor_should_recover_from_a_snapshot_with_follow_up_messages_and_an_upper_bound()
-//        {
-//            // Create an actor and trigger manual recovery so it will accept new messages
-//            var actor1 = Sys.ActorOf(Props.Create<PersistentActorCWithManualRecovery>(_actorId, TestActor));
-//            actor1.Tell(new Recover(SnapshotSelectionCriteria.None));
-//
-//            // Write a message, snapshot, then write some follow-up messages
-//            actor1.Tell("a");
-//            ExpectHandled("a", 1, false);
-//            actor1.Tell("snap");
-//            ExpectMsg("snapped-a-1");
-//            WriteSameMessageAndVerify(actor1, "a", 2L, 7L);
-//
-//            // Create another copy of that actor and manually recover to an upper bound (i.e. past state) and verify
-//            // we get the expected messages after the snapshot
-//            var actor2 = Sys.ActorOf(Props.Create<PersistentActorCWithManualRecovery>(_actorId, TestActor));
-//            actor2.Tell(new Recover(SnapshotSelectionCriteria.Latest, toSequenceNr: 3L));
-//            ExpectMsg("offered-a-1");
-//            ExpectHandled("a", 2, true);
-//            ExpectHandled("a", 3, true);
-//
-//            // Should continue working after recovery to previous state, but highest sequence number should take into 
-//            // account other messages that were written but not replayed
-//            actor2.Tell("d");
-//            ExpectHandled("d", 8L, false);
-//        }
+        [Fact]
+        public void Persistent_actor_should_recover_from_a_snapshot_with_follow_up_messages_and_an_upper_bound()
+        {
+            // Create an actor and trigger manual recovery so it will accept new messages
+            var actor1 = Sys.ActorOf(Props.Create<PersistentActorCWithManualRecovery>(_actorId, TestActor, new Recovery()));
+            
+            // Write a message, snapshot, then write some follow-up messages
+            actor1.Tell("a");
+            ExpectHandled("a", 1, false);
+            actor1.Tell("snap");
+            ExpectMsg("snapped-a-1");
+            WriteSameMessageAndVerify(actor1, "a", 2L, 7L);
+
+            // Create another copy of that actor and manually recover to an upper bound (i.e. past state) and verify
+            // we get the expected messages after the snapshot
+            var actor2 = Sys.ActorOf(Props.Create<PersistentActorCWithManualRecovery>(_actorId, TestActor, new Recovery(toSequenceNr:3L)));
+            ExpectMsg("offered-a-1");
+            ExpectHandled("a", 2, true);
+            ExpectHandled("a", 3, true);
+
+            // Should continue working after recovery to previous state, but highest sequence number should take into 
+            // account other messages that were written but not replayed
+            actor2.Tell("d");
+            ExpectHandled("d", 8L, false);
+        }
 
         [Fact]
         public void Persistent_actor_should_recover_from_a_snapshot_without_follow_up_messages_inside_a_partition()
@@ -235,6 +233,7 @@ namespace Akka.Persistence.Cassandra.Tests
         private void ExpectHandled(string message, long sequenceNumber, bool isRecovering)
         {
             object msg = ReceiveOne();
+            Console.Out.WriteLine(msg);
             var handledMsg = Assert.IsType<HandledMessage>(msg);
             Assert.Equal(message, handledMsg.Message);
             Assert.Equal(sequenceNumber, handledMsg.SequenceNumber);
@@ -274,10 +273,12 @@ namespace Akka.Persistence.Cassandra.Tests
         public class PersistentActorA : PersistentActor
         {
             private readonly string _persistenceId;
+            private readonly IActorRef _receiver;
 
-            public PersistentActorA(string persistenceId)
+            public PersistentActorA(string persistenceId, IActorRef receiver)
             {
                 _persistenceId = persistenceId;
+                _receiver = receiver;
             }
 
             public override string PersistenceId
@@ -318,7 +319,7 @@ namespace Akka.Persistence.Cassandra.Tests
 
             private void Handle(string payload)
             {
-                Context.Sender.Tell(new HandledMessage(payload, LastSequenceNr, IsRecovering), Self);
+                _receiver.Tell(new HandledMessage(payload, LastSequenceNr, IsRecovering));
             }
         }
 
@@ -398,10 +399,13 @@ namespace Akka.Persistence.Cassandra.Tests
 
         public class PersistentActorCWithManualRecovery : PersistentActorC
         {
-            public PersistentActorCWithManualRecovery(string persistenceId, IActorRef probe)
+            public PersistentActorCWithManualRecovery(string persistenceId, IActorRef probe, Recovery recovery)
                 : base(persistenceId, probe)
             {
+                Recovery = recovery;
             }
+
+            public override Recovery Recovery { get; }
 
             protected override void PreRestart(Exception reason, object message)
             {
