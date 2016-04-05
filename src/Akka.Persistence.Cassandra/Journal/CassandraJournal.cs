@@ -35,7 +35,8 @@ namespace Akka.Persistence.Cassandra.Journal
         private PreparedStatement _selectDeletedToSequence;
         private PreparedStatement _selectConfigurationValue;
         private PreparedStatement _writeConfigurationValue;
-        private LoggingRetryPolicy _deleteRetryPolicy;
+        private readonly LoggingRetryPolicy _deleteRetryPolicy;
+        private readonly LoggingRetryPolicy _writeRetryPolicy;
 
         public CassandraJournal()
         {
@@ -45,6 +46,7 @@ namespace Akka.Persistence.Cassandra.Journal
             // Use setting from the persistence extension when batch deleting
             var journalSettings = _cassandraExtension.JournalSettings;
             _deleteRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.DeleteRetries));
+            _writeRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.WriteRetries));
             _maxDeletionBatchSize = journalSettings.MaxMessageBatchSize;
         }
         
@@ -123,7 +125,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     // Get next page from current partition
                     IStatement getRows = _selectMessages.Bind(persistenceId, partitionNumber, fromSequenceNr, toSequenceNr)
                                                         .SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency)
-                                                        .SetPageSize(_cassandraExtension.JournalSettings.MaxResultSize)
+                                                        .SetPageSize(_cassandraExtension.JournalSettings.MaxResultSizeReplay)
                                                         .SetPagingState(pageState)
                                                         .SetAutoPage(false);
 
@@ -217,7 +219,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     var message = persistentMessages[0];
                     var statement = _writeMessage.Bind(persistenceId, partitionNumber, message.SequenceNr,
                         Serialize(message))
-                        .SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency);
+                        .SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency).SetRetryPolicy(_writeRetryPolicy);
                     return await _session.ExecuteAsync(statement);
                 }
 
@@ -232,7 +234,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 if (writeHeader)
                     batch.Add(_writeHeader.Bind(persistenceId, partitionNumber, seqNr));
 
-                batch.SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency);
+                batch.SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency).SetRetryPolicy(_writeRetryPolicy);
                 return await _session.ExecuteAsync(batch);
             });
 
@@ -285,7 +287,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 RowSet lastSequenceRows = await _session.ExecuteAsync(getLastMessageSequence).ConfigureAwait(false);
                 
                 // If we have a sequence number, we've got messages to delete still in the partition
-                Row lastSequenceRow = lastSequenceRows.SingleOrDefault();
+                var lastSequenceRow = lastSequenceRows.SingleOrDefault();
                 if (lastSequenceRow != null)
                 {
                     // Delete either to the end of the partition or to the number specified, whichever comes first
@@ -301,7 +303,6 @@ namespace Akka.Persistence.Cassandra.Journal
                         {
                             var deleteStatement = _deleteMessagePermanent.Bind(persistenceId, partitionNumber, seq);
                             deleteStatement.SetConsistencyLevel( _cassandraExtension.JournalSettings.WriteConsistency);
-                            _deleteRetryPolicy = new LoggingRetryPolicy(_deleteRetryPolicy);
                             deleteStatement.SetRetryPolicy(_deleteRetryPolicy);
                             deleteTasks.Add(_session.ExecuteAsync(deleteStatement));
                         }

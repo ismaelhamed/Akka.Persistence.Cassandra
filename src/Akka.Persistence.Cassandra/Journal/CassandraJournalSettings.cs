@@ -41,8 +41,8 @@ namespace Akka.Persistence.Cassandra.Journal
         public CassandraJournalSettings(Config config)
             : base(config)
         {
-            PartitionSize = config.GetLong("partition-size");
-            MaxResultSize = config.GetInt("max-result-size");
+            PartitionSize = config.GetLong("target-partition-size");
+            MaxResultSize = config.GetInt("max-result-size"); // TODO: not used in the scala version?...
             DeleteRetries = config.GetInt("delete-retries");
             WriteRetries = config.GetInt("write-retries");
             MaxMessageBatchSize = config.GetInt("max-message-batch-size");
