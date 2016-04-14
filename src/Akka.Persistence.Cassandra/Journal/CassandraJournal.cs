@@ -125,7 +125,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     // Get next page from current partition
                     IStatement getRows = _selectMessages.Bind(persistenceId, partitionNumber, fromSequenceNr, toSequenceNr)
                                                         .SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency)
-                                                        .SetPageSize(_cassandraExtension.JournalSettings.MaxResultSizeReplay)
+                                                        .SetPageSize(_cassandraExtension.JournalSettings.MaxResultSize)
                                                         .SetPagingState(pageState)
                                                         .SetAutoPage(false);
 
@@ -214,12 +214,25 @@ namespace Akka.Persistence.Cassandra.Journal
                     }
                 }
                 // No need for a batch if writing a single message
+                var timeUuid = TimeUuid.NewId();
+                var timeBucket = new TimeBucket(timeUuid);
                 if (persistentMessages.Count == 1 && writeHeader == false)
                 {
                     var message = persistentMessages[0];
-                    var statement = _writeMessage.Bind(persistenceId, partitionNumber, message.SequenceNr,
-                        Serialize(message))
+                    var statement = _writeMessage.Bind(
+                        persistenceId, 
+                        partitionNumber, 
+                        message.SequenceNr,
+                        timeUuid,
+                        timeBucket.Key,
+                        message.WriterGuid,
+                        null, // TODO: message.SerializerId,
+                        null, // TODO: message.SerializerManifest,
+                        message.Manifest,
+                        Serialize(message),
+                        null)
                         .SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency).SetRetryPolicy(_writeRetryPolicy);
+                    // TODO: handle event tags here
                     return await _session.ExecuteAsync(statement);
                 }
 
@@ -227,7 +240,19 @@ namespace Akka.Persistence.Cassandra.Journal
                 var batch = new BatchStatement();
                 foreach (var message in persistentMessages)
                 {
-                    batch.Add(_writeMessage.Bind(message.PersistenceId, partitionNumber, message.SequenceNr, Serialize(message)));
+                    
+                    batch.Add(_writeMessage.Bind(
+                        message.PersistenceId, 
+                        partitionNumber, 
+                        message.SequenceNr,
+                        timeUuid,
+                        timeBucket.Key,
+                        message.WriterGuid,
+                        null, // TODO: message.SerializerId,
+                        null, // TODO: message.SerializerManifest,
+                        message.Manifest,
+                        Serialize(message),
+                        null));
                 }
 
                 // Add header if necessary
@@ -287,7 +312,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 RowSet lastSequenceRows = await _session.ExecuteAsync(getLastMessageSequence).ConfigureAwait(false);
                 
                 // If we have a sequence number, we've got messages to delete still in the partition
-                var lastSequenceRow = lastSequenceRows.SingleOrDefault();
+                Row lastSequenceRow = lastSequenceRows.SingleOrDefault();
                 if (lastSequenceRow != null)
                 {
                     // Delete either to the end of the partition or to the number specified, whichever comes first

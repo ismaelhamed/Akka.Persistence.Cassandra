@@ -104,6 +104,7 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Snapshot\SnapshotStoreStatements.cs" />
+    <Compile Include="TimeBucket.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Akka.Persistence.Cassandra.nuspec" />
