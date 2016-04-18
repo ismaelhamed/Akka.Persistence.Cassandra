@@ -27,16 +27,15 @@ namespace Akka.Persistence.Cassandra.Journal
 
         private ISession _session;
         private PreparedStatement _writeMessage;
-        private PreparedStatement _writeHeader;
-        private PreparedStatement _selectHeaderSequence;
         private PreparedStatement _selectLastMessageSequence;
         private PreparedStatement _selectMessages;
         private PreparedStatement _deleteMessagePermanent;
-        private PreparedStatement _selectDeletedToSequence;
-        private PreparedStatement _selectConfigurationValue;
-        private PreparedStatement _writeConfigurationValue;
         private readonly LoggingRetryPolicy _deleteRetryPolicy;
         private readonly LoggingRetryPolicy _writeRetryPolicy;
+        private PreparedStatement _checkInUse;
+        private PreparedStatement _writeInUse;
+        private PreparedStatement _selectDeletedTo;
+        private PreparedStatement _insertDeletedTo;
 
         public CassandraJournal()
         {
@@ -63,34 +62,47 @@ namespace Akka.Persistence.Cassandra.Journal
                 _session.Execute(string.Format(JournalStatements.CreateKeyspace, settings.Keyspace, settings.KeyspaceCreationOptions));
 
             var fullyQualifiedTableName = string.Format("{0}.{1}", settings.Keyspace, settings.Table);
+            var metaTableName = $"{settings.Keyspace}.{settings.MetadataTable}";
 
-            string createTable = string.IsNullOrWhiteSpace(settings.TableCreationProperties)
+            var createTable = string.IsNullOrWhiteSpace(settings.TableCreationProperties)
                                      ? string.Format(JournalStatements.CreateTable, fullyQualifiedTableName, string.Empty, string.Empty)
                                      : string.Format(JournalStatements.CreateTable, fullyQualifiedTableName, " WITH ",
                                                      settings.TableCreationProperties);
+            var createConfigTable = string.Format(JournalStatements.CreateConfigTable, $"{settings.Keyspace}.{settings.MetadataTable}");
+            var createMetaTable = string.Format(JournalStatements.CreateMetatdataTable, metaTableName);
             _session.Execute(createTable);
+            _session.Execute(createConfigTable);
+            _session.Execute(createMetaTable);
 
             // Prepare some statements against C*
             _writeMessage = _session.PrepareFormat(JournalStatements.WriteMessage, fullyQualifiedTableName);
-            _writeHeader = _session.PrepareFormat(JournalStatements.WriteHeader, fullyQualifiedTableName);
-            _selectHeaderSequence = _session.PrepareFormat(JournalStatements.SelectHeaderSequence, fullyQualifiedTableName);
-            _selectLastMessageSequence = _session.PrepareFormat(JournalStatements.SelectLastMessageSequence, fullyQualifiedTableName);
+            _deleteMessagePermanent = _session.PrepareFormat(JournalStatements.DeleteMessage, fullyQualifiedTableName);
             _selectMessages = _session.PrepareFormat(JournalStatements.SelectMessages, fullyQualifiedTableName);
-            _deleteMessagePermanent = _session.PrepareFormat(JournalStatements.DeleteMessagePermanent, fullyQualifiedTableName);
-            _selectDeletedToSequence = _session.PrepareFormat(JournalStatements.SelectDeletedToSequence, fullyQualifiedTableName);
-            _selectConfigurationValue = _session.PrepareFormat(JournalStatements.SelectConfigurationValue, fullyQualifiedTableName);
-            _writeConfigurationValue = _session.PrepareFormat(JournalStatements.WriteConfigurationValue, fullyQualifiedTableName);
+            _checkInUse = _session.PrepareFormat(JournalStatements.SelectInUse, fullyQualifiedTableName);
+            _writeInUse = _session.PrepareFormat(JournalStatements.WriteInUse, fullyQualifiedTableName);
+            _selectDeletedTo = _session.PrepareFormat(JournalStatements.SelectDeletedTo, metaTableName);
+            _insertDeletedTo = _session.PrepareFormat(JournalStatements.InsertDeletedTo, metaTableName);
+            _selectLastMessageSequence = _session.PrepareFormat(JournalStatements.SelectLastMessageSequence, fullyQualifiedTableName);
+
+            //            _writeHeader = _session.PrepareFormat(JournalStatements.WriteHeader, fullyQualifiedTableName);
+            //            _selectHeaderSequence = _session.PrepareFormat(JournalStatements.SelectHeaderSequence, fullyQualifiedTableName);
+
+
+
+            //            _selectDeletedToSequence = _session.PrepareFormat(JournalStatements.SelectDeletedToSequence, fullyQualifiedTableName);
+            //            _selectConfigurationValue = _session.PrepareFormat(JournalStatements.SelectConfigurationValue, fullyQualifiedTableName);
+            //            _writeConfigurationValue = _session.PrepareFormat(JournalStatements.WriteConfigurationValue, fullyQualifiedTableName);
 
             // The partition size can only be set once (the first time the table is created) so see if it's already been set
             long partitionSize = GetConfigurationValueOrDefault("partition-size", -1L);
             if (partitionSize == -1L)
             {
                 // Persist the partition size specified in the cluster settings
-                WriteConfigurationValue("partition-size", settings.PartitionSize);
+                WriteConfigurationValue("partition-size", settings.TargetPartitionSize);
             }
-            else if (partitionSize != settings.PartitionSize)
+            else if (partitionSize != settings.TargetPartitionSize)
             {
-                throw new ConfigurationException(string.Format(InvalidPartitionSizeException, partitionSize, settings.PartitionSize));
+                throw new ConfigurationException(string.Format(InvalidPartitionSizeException, partitionSize, settings.TargetPartitionSize));
             }
         }
 
@@ -186,6 +198,7 @@ namespace Akka.Persistence.Cassandra.Journal
             return maxSequenceNumber;
         }
 
+
         protected override async Task<IImmutableList<Exception>> WriteMessagesAsync(IEnumerable<AtomicWrite> messages)
         {
 
@@ -194,7 +207,11 @@ namespace Akka.Persistence.Cassandra.Journal
 
             if (!messageList.Any())
                 return null;
-
+            var maxPnr =
+                GetPartitionNumber(
+                    ((IImmutableList<IPersistentRepresentation>) messageList.Last().Payload).Last().SequenceNr);
+            var firstSeq = ((IImmutableList<IPersistentRepresentation>) messageList.First().Payload).First().SequenceNr;
+            var minPnr = GetPartitionNumber(firstSeq);
             var writeTasks = messageList.Select(async write =>
             {
                 var persistenceId = write.PersistenceId;
@@ -213,12 +230,15 @@ namespace Akka.Persistence.Cassandra.Journal
                         writeHeader = true;
                     }
                 }
+                
+
                 // No need for a batch if writing a single message
                 var timeUuid = TimeUuid.NewId();
                 var timeBucket = new TimeBucket(timeUuid);
                 if (persistentMessages.Count == 1 && writeHeader == false)
                 {
                     var message = persistentMessages[0];
+                    var seialized = SerializeEvent(message);
                     var statement = _writeMessage.Bind(
                         persistenceId, 
                         partitionNumber, 
@@ -267,6 +287,12 @@ namespace Akka.Persistence.Cassandra.Journal
 
             return await Task<ImmutableList<Exception>>.Factory.ContinueWhenAll(writeTasks.ToArray(), tasks => tasks.Select(t => t.IsFaulted ? TryUnwrapException(t.Exception) : null).ToImmutableList());
 
+        }
+
+        private Serialized SerializeEvent(IPersistentRepresentation @event)
+        {
+            // Akka.Serialization.Serialization.
+            throw new NotImplementedException("TODO: figure how to deal with akka serializers in .NET to get the serializer ID and manifest as it is in scala.");
         }
 
         private Exception TryUnwrapException(Exception e)
@@ -366,12 +392,12 @@ namespace Akka.Persistence.Cassandra.Journal
 
         private long GetPartitionNumber(long sequenceNumber)
         {
-            return (sequenceNumber - 1L)/_cassandraExtension.JournalSettings.PartitionSize;
+            return (sequenceNumber - 1L)/_cassandraExtension.JournalSettings.TargetPartitionSize;
         }
 
         private bool IsNewPartition(long sequenceNumber)
         {
-            return (sequenceNumber - 1L)%_cassandraExtension.JournalSettings.PartitionSize == 0L;
+            return (sequenceNumber - 1L)%_cassandraExtension.JournalSettings.TargetPartitionSize == 0L;
         }
 
         private T GetConfigurationValueOrDefault<T>(string key, T defaultValue)

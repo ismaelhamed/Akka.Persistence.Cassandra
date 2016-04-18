@@ -37,6 +37,16 @@ namespace Akka.Persistence.Cassandra
         public string Table { get; private set; }
 
         /// <summary>
+        /// Name of the table to be created/used for journal config.
+        /// </summary>
+        public string ConfigTable { get; private set; }
+
+        /// <summary>
+        /// Name of the table to be created/used for storing metadata.
+        /// </summary>
+        public string MetadataTable { get; private set; }
+
+        /// <summary>
         /// A string to be appended to the CREATE TABLE statement after the WITH clause. Use this to define things
         /// like gc_grace_seconds or one of the many other table options.
         /// </summary>
@@ -62,6 +72,8 @@ namespace Akka.Persistence.Cassandra
 
             Table = config.GetString("table");
             TableCreationProperties = config.GetString("table-creation-properties");
+            ConfigTable = config.GetString("config-table");
+            MetadataTable = config.GetString("metadata-table");
 
             // Quote keyspace and table if necessary
             if (config.GetBoolean("use-quoted-identifiers"))

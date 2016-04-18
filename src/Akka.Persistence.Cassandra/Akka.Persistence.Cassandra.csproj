@@ -79,6 +79,7 @@
     <Compile Include="CassandraPersistence.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="SerializedAtomicWrite.cs" />
     <Compile Include="SessionManagement\CassandraSession.cs" />
     <Compile Include="CassandraSettings.cs" />
     <Compile Include="SessionManagement\SessionSettings.cs">

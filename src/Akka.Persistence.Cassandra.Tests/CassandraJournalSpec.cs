@@ -7,7 +7,7 @@ namespace Akka.Persistence.Cassandra.Tests
     {
         private static readonly Config JournalConfig = ConfigurationFactory.ParseString(@"
             akka.persistence.journal.plugin = ""cassandra-journal""
-            akka.test.single-expect-default = 20s
+            akka.test.single-expect-default = 50s
         ");
 
         public CassandraJournalSpec()

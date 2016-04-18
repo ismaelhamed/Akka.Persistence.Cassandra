@@ -10,7 +10,7 @@ namespace Akka.Persistence.Cassandra.Journal
         /// <summary>
         /// The approximate number of rows per partition to use. Cannot be changed after table creation.
         /// </summary>
-        public long PartitionSize { get; private set; }
+        public long TargetPartitionSize { get; private set; }
 
         /// <summary>
         /// The maximum number of messages to retrieve in one request when replaying messages.
@@ -41,7 +41,7 @@ namespace Akka.Persistence.Cassandra.Journal
         public CassandraJournalSettings(Config config)
             : base(config)
         {
-            PartitionSize = config.GetLong("target-partition-size");
+            TargetPartitionSize = config.GetLong("target-partition-size");
             MaxResultSize = config.GetInt("max-result-size"); // TODO: not used in the scala version?...
             DeleteRetries = config.GetInt("delete-retries");
             WriteRetries = config.GetInt("write-retries");
