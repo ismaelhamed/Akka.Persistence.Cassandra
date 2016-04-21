@@ -80,6 +80,12 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Journal\Tagged.cs" />
+    <Compile Include="Compaction\BaseCompactionStrategy.cs" />
+    <Compile Include="Compaction\CassandraCompactionStrategy.cs" />
+    <Compile Include="Compaction\DateTieredCompactionStrategy.cs" />
+    <Compile Include="Compaction\ICassandraCompactionStrategyConfig.cs" />
+    <Compile Include="Compaction\LeveledCompactionStrategy.cs" />
+    <Compile Include="Compaction\SizeTieredCompactionStrategy.cs" />
     <Compile Include="SessionManagement\CassandraSession.cs" />
     <Compile Include="CassandraSettings.cs" />
     <Compile Include="SessionManagement\SessionSettings.cs">
