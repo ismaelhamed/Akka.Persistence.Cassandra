@@ -7,6 +7,7 @@ using Akka.Actor;
 using Akka.Configuration;
 using Akka.Persistence.Journal;
 using Akka.Serialization;
+using Akka.Util.Internal;
 using Cassandra;
 
 namespace Akka.Persistence.Cassandra.Journal
@@ -36,6 +37,7 @@ namespace Akka.Persistence.Cassandra.Journal
         private PreparedStatement _writeInUse;
         private PreparedStatement _selectDeletedTo;
         private PreparedStatement _insertDeletedTo;
+        private int _maxTagsPerEvent;
 
         public CassandraJournal()
         {
@@ -47,6 +49,7 @@ namespace Akka.Persistence.Cassandra.Journal
             _deleteRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.DeleteRetries));
             _writeRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.WriteRetries));
             _maxDeletionBatchSize = journalSettings.MaxMessageBatchSize;
+            _maxTagsPerEvent = journalSettings.MaxTagsPerEvent;
         }
         
         protected override void PreStart()
@@ -207,50 +210,27 @@ namespace Akka.Persistence.Cassandra.Journal
 
             if (!messageList.Any())
                 return null;
-            var maxPnr =
-                GetPartitionNumber(
-                    ((IImmutableList<IPersistentRepresentation>) messageList.Last().Payload).Last().SequenceNr);
+            var maxPnr = GetPartitionNumber(((IImmutableList<IPersistentRepresentation>) messageList.Last().Payload).Last().SequenceNr);
             var firstSeq = ((IImmutableList<IPersistentRepresentation>) messageList.First().Payload).First().SequenceNr;
             var minPnr = GetPartitionNumber(firstSeq);
+            var persistenceId = messageList.First().PersistenceId;
+            // reading assumes sequence numbers are in the right partition or partition + 1
+            // even if we did allow this it would perform terribly as large C* batches are not good
+            if (maxPnr-minPnr<=1) throw new NotSupportedException("Do not support AtomicWrites that span 3 partitions. Keep AtomicWrites <= max partition size.");
             var writeTasks = messageList.Select(async write =>
             {
-                var persistenceId = write.PersistenceId;
+                var serialized = Serialize(write).Payload;
 
-                var seqNr = write.LowestSequenceNr;
-                var writeHeader = IsNewPartition(seqNr);
-                var partitionNumber = GetPartitionNumber(seqNr);
-                var persistentMessages = ((IImmutableList<IPersistentRepresentation>)write.Payload).ToList();
-                if (persistentMessages.Count > 1)
-                {
-                    // See if this collection of writes would span multiple partitions and if so, move all the writes to the next partition
-                    var lastMessagePartition = GetPartitionNumber(write.HighestSequenceNr);
-                    if (lastMessagePartition != partitionNumber)
-                    {
-                        partitionNumber = lastMessagePartition;
-                        writeHeader = true;
-                    }
-                }
+                var persistentMessages = serialized.ToList();
                 
 
                 // No need for a batch if writing a single message
                 var timeUuid = TimeUuid.NewId();
                 var timeBucket = new TimeBucket(timeUuid);
-                if (persistentMessages.Count == 1 && writeHeader == false)
+                if (persistentMessages.Count == 1)
                 {
                     var message = persistentMessages[0];
-                    var seialized = SerializeEvent(message);
-                    var statement = _writeMessage.Bind(
-                        persistenceId, 
-                        partitionNumber, 
-                        message.SequenceNr,
-                        timeUuid,
-                        timeBucket.Key,
-                        message.WriterGuid,
-                        null, // TODO: message.SerializerId,
-                        null, // TODO: message.SerializerManifest,
-                        message.Manifest,
-                        Serialize(message),
-                        null)
+                    var statement = BindMessageStatement(persistenceId, maxPnr, message, timeUuid, timeBucket)
                         .SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency).SetRetryPolicy(_writeRetryPolicy);
                     // TODO: handle event tags here
                     return await _session.ExecuteAsync(statement);
@@ -260,22 +240,20 @@ namespace Akka.Persistence.Cassandra.Journal
                 var batch = new BatchStatement();
                 foreach (var message in persistentMessages)
                 {
-                    
-                    batch.Add(_writeMessage.Bind(
-                        message.PersistenceId, 
-                        partitionNumber, 
-                        message.SequenceNr,
-                        timeUuid,
-                        timeBucket.Key,
-                        message.WriterGuid,
-                        null, // TODO: message.SerializerId,
-                        null, // TODO: message.SerializerManifest,
-                        message.Manifest,
-                        Serialize(message),
-                        null));
+                    var boundStatement = BindMessageStatement(persistenceId, maxPnr, message, timeUuid, timeBucket);
+                    if (message.Tags != null && message.Tags.Length > 0)
+                    {
+                        message.Tags.ForEach(tag =>
+                        {
+                            var tagCounts = new int[_maxTagsPerEvent];
+                            // TODO: set tag IDs and bind values to the statement
+                        });
+                    }
+                    batch.Add(boundStatement);
                 }
 
                 // Add header if necessary
+
                 if (writeHeader)
                     batch.Add(_writeHeader.Bind(persistenceId, partitionNumber, seqNr));
 
@@ -289,10 +267,66 @@ namespace Akka.Persistence.Cassandra.Journal
 
         }
 
-        private Serialized SerializeEvent(IPersistentRepresentation @event)
+        private BoundStatement BindMessageStatement(string persistenceId, long maxPnr, Serialized message, TimeUuid timeUuid, TimeBucket timeBucket, params string[] tags)
+        {
+            return _writeMessage.Bind(
+                persistenceId,
+                maxPnr, 
+                message.SequenceNr,
+                timeUuid,
+                timeBucket.Key,
+                message.WriterUuid,
+                message.SerId,
+                message.SerManifest,
+                message.EventManifest,
+                message.SerializedData,
+                null);
+        }
+
+
+        private SerializedAtomicWrite Serialize(AtomicWrite aw)
+        {
+            var result = new SerializedAtomicWrite
+            {
+                PersistenceId = aw.PersistenceId,
+                Payload = ((IEnumerable<IPersistentRepresentation>)aw.Payload).Select(p =>
+                {
+                    if (!(p.Payload is Tagged)) return SerializeEvent(p, ImmutableHashSet<string>.Empty);
+                    var tagged = (Tagged)p.Payload;
+                    var taggedPayload = p.WithPayload(tagged);
+                    return SerializeEvent(taggedPayload, tagged.Tags);
+                })
+            };
+            return result;
+        }
+
+        private Serialized SerializeEvent(IPersistentRepresentation p, IImmutableSet<string> tags)
         {
             // Akka.Serialization.Serialization.
-            throw new NotImplementedException("TODO: figure how to deal with akka serializers in .NET to get the serializer ID and manifest as it is in scala.");
+            var @event = p.Payload;
+            var serializer = Context.System.Serialization.FindSerializerFor(@event);
+            var serManifest="";
+            if (serializer is SerializerWithStringManifest)
+            {
+                serManifest = ((SerializerWithStringManifest) serializer).Manifest(@event);
+            }else if (serializer.IncludeManifest)
+            {
+                serManifest = @event.GetType().Name;
+            }
+            var serEvent = serializer.ToBinary(@event);
+
+            // TODO: figure if we need to check for the transportInformation here
+            return new Serialized
+            {
+                PersistenceId = p.PersistenceId,
+                SequenceNr = p.SequenceNr,
+                SerializedData = serEvent,
+                Tags = tags,
+                EventManifest = p.Manifest,
+                SerManifest = serManifest,
+                SerId = serializer.Identifier,
+                WriterUuid = p.WriterGuid
+            };
         }
 
         private Exception TryUnwrapException(Exception e)

@@ -38,6 +38,8 @@ namespace Akka.Persistence.Cassandra.Journal
         /// </summary>
         public int MaxResultSizeReplay { get; private set; }
 
+        public int MaxTagsPerEvent => 3;
+
         public CassandraJournalSettings(Config config)
             : base(config)
         {
