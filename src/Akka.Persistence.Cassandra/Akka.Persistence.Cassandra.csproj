@@ -90,6 +90,7 @@
     <Compile Include="ConfigSessionProvider.cs" />
     <Compile Include="ISessionProvider.cs" />
     <Compile Include="Query\CassandraReadJournalConfig.cs" />
+    <Compile Include="Query\CassandraReadStatements.cs" />
     <Compile Include="Query\QueryActorPublisher.cs" />
     <Compile Include="SessionManagement\CassandraSession.cs" />
     <Compile Include="CassandraSettings.cs" />
