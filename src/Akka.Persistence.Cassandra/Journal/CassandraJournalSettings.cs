@@ -15,7 +15,7 @@ namespace Akka.Persistence.Cassandra.Journal
         /// <summary>
         /// The approximate number of rows per partition to use. Cannot be changed after table creation.
         /// </summary>
-        public long TargetPartitionSize { get; private set; }
+        public int TargetPartitionSize { get; private set; }
 
         /// <summary>
         /// The maximum number of messages to retrieve in one request when replaying messages.
@@ -47,10 +47,14 @@ namespace Akka.Persistence.Cassandra.Journal
 
         public IReadOnlyDictionary<string, int> Tags { get; private set; }
 
+        public string EventsByTagView { get; }
+
+        public TimeSpan? PubsubMinimumInterval { get; }
+
         public CassandraJournalSettings(ActorSystem system, Config config)
             : base(system, config)
         {
-            TargetPartitionSize = config.GetLong("target-partition-size");
+            TargetPartitionSize = config.GetInt("target-partition-size");
             MaxResultSize = config.GetInt("max-result-size"); // TODO: not used in the scala version?...
             DeleteRetries = config.GetInt("delete-retries");
             WriteRetries = config.GetInt("write-retries");
@@ -68,6 +72,20 @@ namespace Akka.Persistence.Cassandra.Journal
                 tags.Add(tag, tagId);
             }
             Tags = new ReadOnlyDictionary<string,int>(tags);
+            EventsByTagView = config.GetString("events-by-tag-view");
+            PubsubMinimumInterval = GetPubsubMinimumInterval(config);
+        }
+
+        private TimeSpan? GetPubsubMinimumInterval(Config config)
+        {
+            var key = "pubsub-minimum-interval";
+            var val = config.GetString(key).ToLowerInvariant();
+            if ("off".Equals(val))
+                return null;
+            var result = config.GetTimeSpan(key, null, false);
+            if (result <= TimeSpan.Zero)
+                throw new ArgumentException($"{key} must be greater than 0, or 'off'");
+            return result;
         }
 
     }
