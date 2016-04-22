@@ -5,70 +5,73 @@ namespace Akka.Persistence.Cassandra.Snapshot
 {
     public class CassandraStatements
     {
-        private readonly CassandraSnapshotStoreConfig _config;
-        private readonly string _tableName;
+        private readonly string _selectSnapshotMetadata;
 
         public CassandraStatements(CassandraSnapshotStoreConfig config)
         {
-            _config = config;
-            _tableName = $"{config.Keyspace}.{config.Table}";
+            var config1 = config;
+            string tableName = $"{config.Keyspace}.{config.Table}";
+
+            CreateKeyspace =
+                $@"
+CREATE KEYSPACE IF NOT EXISTS {config1.Keyspace}
+WITH REPLICATION = {{ 'class' : {config1
+                    .ReplicationStrategy} }}
+";
+
+            CreateTable =
+                $@"
+CREATE TABLE IF NOT EXISTS {tableName} (
+persistence_id text,
+    sequence_nr bigint,
+    timestamp bigint,
+    ser_id int,
+    ser_manifest text,
+    snapshot_data blob,
+    snapshot blob,
+    PRIMARY KEY (persistence_id, sequence_nr))
+    WITH CLUSTERING ORDER BY (sequence_nr DESC)
+    AND compaction = {config1
+                    .TableCompactionStrategy.AsCQL}
+";
+
+            WriteSnapshot =
+                $@"
+INSERT INTO {tableName} (persistence_id, sequence_nr, timestamp, ser_manifest, ser_id, snapshot_data, snapshot)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+";
+
+            DeleteSnapshot =
+                $@"
+DELETE FROM {tableName} WHERE
+    persistence_id = ? AND
+    sequence_nr = ?
+";
+
+            SelectSnapshot = 
+                $@"
+SELECT * FROM {tableName} WHERE
+    persistence_id = ? AND
+    sequence_nr = ?
+";
+
+            _selectSnapshotMetadata =
+                $@"
+SELECT persistence_id, sequence_nr, timestamp FROM {tableName} WHERE
+    persistence_id = ? AND
+    sequence_nr <= ?
+    {{0}}
+";
         }
 
-        public string CreateKeyspace
-            =>
-                $@"
-            CREATE KEYSPACE IF NOT EXISTS {_config.Keyspace}
-            WITH REPLICATION = {{ 'class' : {_config
-                    .ReplicationStrategy} }}";
-
-        public string CreateTable
-            =>
-                $@"
-            CREATE TABLE IF NOT EXISTS {_tableName} (
-                persistence_id text,
-                sequence_nr bigint,
-                timestamp bigint,
-                ser_id int,
-                ser_manifest text,
-                snapshot_data blob,
-                snapshot blob,
-                PRIMARY KEY (persistence_id, sequence_nr))
-                WITH CLUSTERING ORDER BY (sequence_nr DESC)
-                AND compaction = {_config
-                    .TableCompactionStrategy.AsCQL}";
-
-        public string WriteSnapshot
-            =>
-                $@"
-            INSERT INTO {_tableName} (persistence_id, sequence_nr, timestamp, ser_manifest, ser_id, snapshot_data, snapshot)
-            VALUES (?, ?, ?, ?, ?, ?, ?)"
-            ;
-
-        public string DeleteSnapshot
-            =>
-                $@"
-            DELETE FROM {_tableName} WHERE
-                persistence_id = ? AND
-                sequence_nr = ?"
-            ;
-
-        public string SelectSnapshot
-            =>
-                $@"
-            SELECT * FROM {_tableName} WHERE
-                persistence_id = ? AND
-                sequence_nr = ?";
+        public string CreateKeyspace { get; }
+        public string CreateTable { get; }
+        public string WriteSnapshot { get; }
+        public string DeleteSnapshot { get; }
+        public string SelectSnapshot { get; }
 
         public string SelectSnapshotMetadata(int? limit = null)
-            =>
-                $@"
-      SELECT persistence_id, sequence_nr, timestamp FROM {_tableName} WHERE
-        persistence_id = ? AND
-        sequence_nr <= ?
-        {(limit
-                    .HasValue
-                    ? $"LIMIT {limit.Value}"
-                    : string.Empty)}";
+            => string.Format(_selectSnapshotMetadata, limit.HasValue ? $"LIMIT {limit.Value}" : string.Empty);
 
         /// <summary>
         /// Execute creation of keyspace and tables is limited to one thread at a time to
