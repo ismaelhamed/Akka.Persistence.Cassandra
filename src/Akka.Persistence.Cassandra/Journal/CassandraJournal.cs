@@ -28,7 +28,7 @@ namespace Akka.Persistence.Cassandra.Journal
 
         private ISession _session;
         private PreparedStatement _writeMessage;
-        private PreparedStatement _selectLastMessageSequence;
+        private PreparedStatement _selectHighestSequenceNumber;
         private PreparedStatement _selectMessages;
         private PreparedStatement _deleteMessagePermanent;
         private readonly LoggingRetryPolicy _deleteRetryPolicy;
@@ -38,6 +38,7 @@ namespace Akka.Persistence.Cassandra.Journal
         private PreparedStatement _selectDeletedTo;
         private PreparedStatement _insertDeletedTo;
         private int _maxTagsPerEvent;
+        private IReadOnlyDictionary<string, int> _tags;
 
         public CassandraJournal()
         {
@@ -50,6 +51,7 @@ namespace Akka.Persistence.Cassandra.Journal
             _writeRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.WriteRetries));
             _maxDeletionBatchSize = journalSettings.MaxMessageBatchSize;
             _maxTagsPerEvent = journalSettings.MaxTagsPerEvent;
+            _tags = journalSettings.Tags;
         }
         
         protected override void PreStart()
@@ -85,16 +87,7 @@ namespace Akka.Persistence.Cassandra.Journal
             _writeInUse = _session.PrepareFormat(JournalStatements.WriteInUse, fullyQualifiedTableName);
             _selectDeletedTo = _session.PrepareFormat(JournalStatements.SelectDeletedTo, metaTableName);
             _insertDeletedTo = _session.PrepareFormat(JournalStatements.InsertDeletedTo, metaTableName);
-            _selectLastMessageSequence = _session.PrepareFormat(JournalStatements.SelectLastMessageSequence, fullyQualifiedTableName);
-
-            //            _writeHeader = _session.PrepareFormat(JournalStatements.WriteHeader, fullyQualifiedTableName);
-            //            _selectHeaderSequence = _session.PrepareFormat(JournalStatements.SelectHeaderSequence, fullyQualifiedTableName);
-
-
-
-            //            _selectDeletedToSequence = _session.PrepareFormat(JournalStatements.SelectDeletedToSequence, fullyQualifiedTableName);
-            //            _selectConfigurationValue = _session.PrepareFormat(JournalStatements.SelectConfigurationValue, fullyQualifiedTableName);
-            //            _writeConfigurationValue = _session.PrepareFormat(JournalStatements.WriteConfigurationValue, fullyQualifiedTableName);
+            _selectHighestSequenceNumber = _session.PrepareFormat(JournalStatements.SelectHighestSequenceNumber, fullyQualifiedTableName);
 
             // The partition size can only be set once (the first time the table is created) so see if it's already been set
             long partitionSize = GetConfigurationValueOrDefault("partition-size", -1L);
@@ -167,38 +160,40 @@ namespace Akka.Persistence.Cassandra.Journal
         public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
         {
             fromSequenceNr = Math.Max(1L, fromSequenceNr);
+
+            var res = await _session.ExecuteAsync(_selectDeletedTo.Bind(persistenceId)).ConfigureAwait(false);
+            var deletedToRow = res.SingleOrDefault();
+            // TODO: continue to port logic to read higest sequence number
+            var deletedTo = 0L;
+            if (deletedToRow != null) 
+                deletedTo = deletedToRow.GetValue<long>("deleted_to");
+
             long partitionNumber = GetPartitionNumber(fromSequenceNr);
-            long maxSequenceNumber = 0L;
+            long currentSnr = fromSequenceNr;
+
+
+
+
             while (true)
             {
-                // Check for header and deleted to sequence number in parallel
-                var rowSets = await GetHeaderAndDeletedTo(persistenceId, partitionNumber).ConfigureAwait(false);
+                var rowSet = await _session.ExecuteAsync(_selectHighestSequenceNumber.Bind(persistenceId, partitionNumber)).ConfigureAwait(false);
 
                 // If header doesn't exist, just bail on the non-existent partition
-                if (rowSets[0].SingleOrDefault() == null)
+                var sequenceNumberRow = rowSet.SingleOrDefault();
+                if (sequenceNumberRow == null)
                     break;
 
-                // See what's been deleted in the partition and if no record found, just use long's min value
-                Row deletedToRow = rowSets[1].SingleOrDefault();
-                long deletedTo = deletedToRow == null ? long.MinValue : deletedToRow.GetValue<long>("sequence_number");
-
-                // Try to avoid reading possible tombstones by skipping deleted records if higher than the fromSequenceNr provided
-                long from = Math.Max(fromSequenceNr, deletedTo);
-
-                // Get the last sequence number in the partition, skipping deleted messages
-                IStatement getLastMessageSequence = _selectLastMessageSequence.Bind(persistenceId, partitionNumber, from)
-                                                                              .SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency);
-                RowSet sequenceRows = await _session.ExecuteAsync(getLastMessageSequence).ConfigureAwait(false);
-
-                // If there aren't any non-deleted messages, use the delete marker's value as the max, otherwise, use whatever value was returned
-                Row sequenceRow = sequenceRows.SingleOrDefault();
-                maxSequenceNumber = sequenceRow == null ? Math.Max(maxSequenceNumber, deletedTo) : sequenceRow.GetValue<long>("sequence_number");
+                var used = sequenceNumberRow.GetValue<bool>("used");
+                var nextHighestSqnr = sequenceNumberRow.GetValue<long>("sequence_number");
+                if (!used) return currentSnr;
+                if (nextHighestSqnr>0)
+                    currentSnr = nextHighestSqnr;
 
                 // Go to next partition
                 partitionNumber++;
             }
 
-            return maxSequenceNumber;
+            return currentSnr;
         }
 
 
@@ -238,24 +233,37 @@ namespace Akka.Persistence.Cassandra.Journal
 
                 // Use a batch and add statements for each message
                 var batch = new BatchStatement();
+                var tagCounts = new int[_maxTagsPerEvent];
                 foreach (var message in persistentMessages)
                 {
                     var boundStatement = BindMessageStatement(persistenceId, maxPnr, message, timeUuid, timeBucket);
-                    if (message.Tags != null && message.Tags.Length > 0)
+                    if (message.Tags != null && message.Tags.Count> 0)
                     {
                         message.Tags.ForEach(tag =>
                         {
-                            var tagCounts = new int[_maxTagsPerEvent];
-                            // TODO: set tag IDs and bind values to the statement
+                            int tagId;
+                            if (!_tags.TryGetValue(tag, out tagId)) tagId = 1;
+
+
+                            tagCounts[tagId - 1] = tagCounts[tagId - 1] + 1;
+                            var i = 0;
+                            while (i < tagCounts.Length)
+                            {
+                                if (tagCounts[i] > 1)
+//                                    warning("Duplicate tag identifer [{}] among tags [{}] for event from [{}]. " +
+//                                                "Define known tags in cassandra-journal.tags configuration when using more than " +
+//                                                "one tag per event.", (i + 1), m.tags.mkString(","), persistenceId);
+                                i += 1;
+                            }
+
                         });
                     }
                     batch.Add(boundStatement);
                 }
 
-                // Add header if necessary
-
-                if (writeHeader)
-                    batch.Add(_writeHeader.Bind(persistenceId, partitionNumber, seqNr));
+                // in case we skip an entire partition we want to make sure the empty partition has in in-use flag so scans
+                // keep going when they encounter it
+                if (IsNewPartition(firstSeq) && minPnr != maxPnr) batch.Add(_writeInUse.Bind(persistenceId, minPnr));
 
                 batch.SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency).SetRetryPolicy(_writeRetryPolicy);
                 return await _session.ExecuteAsync(batch);
@@ -406,18 +414,18 @@ namespace Akka.Persistence.Cassandra.Journal
             }
         }
 
-        private Task<RowSet[]> GetHeaderAndDeletedTo(string persistenceId, long partitionNumber)
-        {
-            return Task.WhenAll(new[]
-            {
-                _selectHeaderSequence.Bind(persistenceId, partitionNumber).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency),
-                _selectDeletedToSequence.Bind(persistenceId, partitionNumber).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency)
-            }.Select(_session.ExecuteAsync));
-        }
+//        private Task<RowSet[]> GetHeaderAndDeletedTo(string persistenceId, long partitionNumber)
+//        {
+//            return Task.WhenAll(new[]
+//            {
+//                _selectHeaderSequence.Bind(persistenceId, partitionNumber).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency),
+//                _selectDeletedToSequence.Bind(persistenceId, partitionNumber).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency)
+//            }.Select(_session.ExecuteAsync));
+//        }
 
         private IPersistentRepresentation MapRowToPersistentRepresentation(Row row, long deletedTo)
         {
-            IPersistentRepresentation pr = Deserialize(row.GetValue<byte[]>("message"));
+            IPersistentRepresentation pr = Deserialize(row.GetValue<byte[]>("event"));
             if (pr.SequenceNr <= deletedTo)
                 pr = pr.Update(pr.SequenceNr, pr.PersistenceId, true, pr.Sender, pr.WriterGuid);
 
@@ -442,7 +450,7 @@ namespace Akka.Persistence.Cassandra.Journal
             if (row == null)
                 return defaultValue;
 
-            IPersistentRepresentation persistent = Deserialize(row.GetValue<byte[]>("message"));
+            IPersistentRepresentation persistent = Deserialize(row.GetValue<byte[]>("event"));
             return (T) persistent.Payload;
         }
 

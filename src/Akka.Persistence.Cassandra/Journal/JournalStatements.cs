@@ -96,24 +96,25 @@
             INSERT INTO {configTableName} (property, value) VALUES(?, ?) IF NOT EXISTS";
 
         public const string SelectDeletedTo = @"
-            SELECT deleted_to FROM ${metadataTableName}
+            SELECT deleted_to FROM {0}
                 WHERE persistence_id = ?";
 
         public const string InsertDeletedTo = @"
-            INSERT INTO ${metadataTableName}
+            INSERT INTO {0}
                 (persistence_id, deleted_to)
                       VALUES( ?, ? )
                     ";
 
         public const string WriteInUse = @"
-            INSERT INTO ${tableName} (persistence_id, partition_nr, used)
+            INSERT INTO {0} (persistence_id, partition_nr, used)
                    VALUES(?, ?, true)";
 
-
-        public const string SelectLastMessageSequence = @"
-            SELECT sequence_number FROM {0} WHERE persistence_id = ? AND partition_number = ? 
-                AND marker = 'A' AND sequence_number >= ? 
-                ORDER BY marker DESC, sequence_number DESC LIMIT 1";
+        public const string SelectHighestSequenceNumber = @"
+             SELECT sequence_nr, used FROM {0} WHERE
+               persistence_id = ? AND
+               partition_nr = ?
+               ORDER BY sequence_nr
+               DESC LIMIT 1";
 
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace Akka.Persistence.Cassandra
 {
@@ -13,7 +14,7 @@ namespace Akka.Persistence.Cassandra
         public string PersistenceId { get; set; }
         public long SequenceNr { get; set; }
         public byte[] SerializedData { get; set; }
-        public string[] Tags { get; set; }
+        public IImmutableSet<string> Tags { get; set; }
         public string EventManifest { get; set; }
         public string SerManifest { get; set; }
         public int SerId { get; set; }
