@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using Akka.Actor;
 using Akka.Configuration;
 
 
@@ -46,8 +47,8 @@ namespace Akka.Persistence.Cassandra.Journal
 
         public IReadOnlyDictionary<string, int> Tags { get; private set; }
 
-        public CassandraJournalSettings(Config config)
-            : base(config)
+        public CassandraJournalSettings(ActorSystem system, Config config)
+            : base(system, config)
         {
             TargetPartitionSize = config.GetLong("target-partition-size");
             MaxResultSize = config.GetInt("max-result-size"); // TODO: not used in the scala version?...

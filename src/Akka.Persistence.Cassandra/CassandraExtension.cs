@@ -19,7 +19,7 @@ namespace Akka.Persistence.Cassandra
         /// <summary>
         /// The settings for the Cassandra snapshot store.
         /// </summary>
-        public CassandraSnapshotStoreSettings SnapshotStoreSettings { get; private set; }
+        public CassandraSnapshotStoreConfig SnapshotStoreConfig { get; private set; }
 
         /// <summary>
         /// The session manager for resolving session instances.
@@ -34,14 +34,14 @@ namespace Akka.Persistence.Cassandra
             system.Settings.InjectTopLevelFallback(CassandraPersistence.DefaultConfig());
 
             // Get or add the session manager
-            SessionManager = CassandraSession.Instance.Apply(system);
+            //SessionManager = CassandraSession.Instance.Apply(system);
             
             // Read config
             var journalConfig = system.Settings.Config.GetConfig("cassandra-journal");
-            JournalSettings = new CassandraJournalSettings(journalConfig);
+            JournalSettings = new CassandraJournalSettings(system, journalConfig);
 
             var snapshotConfig = system.Settings.Config.GetConfig("cassandra-snapshot-store");
-            SnapshotStoreSettings = new CassandraSnapshotStoreSettings(snapshotConfig);
+            SnapshotStoreConfig = new CassandraSnapshotStoreConfig(system, snapshotConfig);
         }
     }
 }

@@ -25,8 +25,8 @@ namespace Akka.Persistence.Cassandra.Tests
             var ext = CassandraPersistence.Instance.Apply(sys);
 
             // Use session to remove the keyspace
-            ISession session = ext.SessionManager.ResolveSession(ext.SnapshotStoreSettings.SessionKey);
-            session.DeleteKeyspaceIfExists(ext.SnapshotStoreSettings.Keyspace);
+            ISession session = ext.SessionManager.ResolveSession(ext.SnapshotStoreConfig.SessionKey);
+            session.DeleteKeyspaceIfExists(ext.SnapshotStoreConfig.Keyspace);
             ext.SessionManager.ReleaseSession(session);
         }
     }

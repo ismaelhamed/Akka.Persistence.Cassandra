@@ -26,7 +26,7 @@ namespace Akka.Persistence.Cassandra
         /// </summary>
         internal static string ToQualifiedString(this Type t)
         {
-            return string.Format("{0}, {1}", t.FullName, t.Assembly.GetName().Name);
+            return $"{t.FullName}, {t.Assembly.GetName().Name}";
         }
 
         /// <summary>

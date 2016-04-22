@@ -80,12 +80,15 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Journal\Tagged.cs" />
+    <Compile Include="CassandraSession.cs" />
     <Compile Include="Compaction\BaseCompactionStrategy.cs" />
     <Compile Include="Compaction\CassandraCompactionStrategy.cs" />
     <Compile Include="Compaction\DateTieredCompactionStrategy.cs" />
     <Compile Include="Compaction\ICassandraCompactionStrategyConfig.cs" />
     <Compile Include="Compaction\LeveledCompactionStrategy.cs" />
     <Compile Include="Compaction\SizeTieredCompactionStrategy.cs" />
+    <Compile Include="ConfigSessionProvider.cs" />
+    <Compile Include="ISessionProvider.cs" />
     <Compile Include="SessionManagement\CassandraSession.cs" />
     <Compile Include="CassandraSettings.cs" />
     <Compile Include="SessionManagement\SessionSettings.cs">
@@ -107,10 +110,10 @@
     <Compile Include="Snapshot\CassandraSnapshotStore.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Snapshot\CassandraSnapshotStoreSettings.cs">
+    <Compile Include="Snapshot\CassandraSnapshotStoreConfig.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Snapshot\SnapshotStoreStatements.cs" />
+    <Compile Include="Snapshot\CassandraStatements.cs" />
     <Compile Include="TimeBucket.cs" />
   </ItemGroup>
   <ItemGroup>
