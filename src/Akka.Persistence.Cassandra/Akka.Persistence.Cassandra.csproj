@@ -89,6 +89,7 @@
     <Compile Include="Compaction\SizeTieredCompactionStrategy.cs" />
     <Compile Include="ConfigSessionProvider.cs" />
     <Compile Include="ISessionProvider.cs" />
+    <Compile Include="Query\AllPersistenceIdsPublisher.cs" />
     <Compile Include="Query\CassandraReadJournalConfig.cs" />
     <Compile Include="Query\CassandraReadStatements.cs" />
     <Compile Include="Query\QueryActorPublisher.cs" />
