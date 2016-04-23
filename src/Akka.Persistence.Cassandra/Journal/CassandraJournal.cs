@@ -571,6 +571,11 @@ namespace Akka.Persistence.Cassandra.Journal
             object IEnumerator.Current => Current;
         }
 
+        public static object DeserializeEvent(Akka.Serialization.Serialization serialization, Row row)
+        {
+            return serialization.Deserialize(row.GetValue<byte[]>("event"), row.GetValue<int>("ser_id"),
+                row.GetValue<string>("ser_manifest"));
+        }
     }
 
     public class FixedRetryPolicy: IRetryPolicy

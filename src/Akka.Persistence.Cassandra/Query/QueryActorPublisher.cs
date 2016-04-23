@@ -333,7 +333,7 @@ namespace Akka.Persistence.Cassandra.Query
         {
             while (available != 0 && count != max && !CompletionCondition(state))
             {
-                var eventAndNextState = UpdateState(state, resultSet.SingleOrDefault());
+                var eventAndNextState = UpdateState(state, resultSet.FirstOrDefault());
                 var @event = eventAndNextState.Item1;
                 var nextState = eventAndNextState.Item2;
                 if (@event.HasValue)
