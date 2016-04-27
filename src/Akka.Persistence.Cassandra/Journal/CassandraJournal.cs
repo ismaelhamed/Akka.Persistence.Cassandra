@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -30,7 +31,7 @@ namespace Akka.Persistence.Cassandra.Journal
         private PreparedStatement _writeMessage;
         private PreparedStatement _selectHighestSequenceNumber;
         private PreparedStatement _selectMessages;
-        private PreparedStatement _deleteMessagePermanent;
+        private PreparedStatement _deleteMessages;
         private readonly LoggingRetryPolicy _deleteRetryPolicy;
         private readonly LoggingRetryPolicy _writeRetryPolicy;
         private PreparedStatement _checkInUse;
@@ -39,6 +40,7 @@ namespace Akka.Persistence.Cassandra.Journal
         private PreparedStatement _insertDeletedTo;
         private int _maxTagsPerEvent;
         private IReadOnlyDictionary<string, int> _tags;
+        private long _targetPartitionSize;
 
         public CassandraJournal()
         {
@@ -81,7 +83,7 @@ namespace Akka.Persistence.Cassandra.Journal
 
             // Prepare some statements against C*
             _writeMessage = _session.PrepareFormat(JournalStatements.WriteMessage, fullyQualifiedTableName);
-            _deleteMessagePermanent = _session.PrepareFormat(JournalStatements.DeleteMessage, fullyQualifiedTableName);
+            _deleteMessages = _session.PrepareFormat(JournalStatements.DeleteMessages, fullyQualifiedTableName);
             _selectMessages = _session.PrepareFormat(JournalStatements.SelectMessages, fullyQualifiedTableName);
             _checkInUse = _session.PrepareFormat(JournalStatements.SelectInUse, fullyQualifiedTableName);
             _writeInUse = _session.PrepareFormat(JournalStatements.WriteInUse, fullyQualifiedTableName);
@@ -89,23 +91,26 @@ namespace Akka.Persistence.Cassandra.Journal
             _insertDeletedTo = _session.PrepareFormat(JournalStatements.InsertDeletedTo, metaTableName);
             _selectHighestSequenceNumber = _session.PrepareFormat(JournalStatements.SelectHighestSequenceNumber, fullyQualifiedTableName);
 
+            _targetPartitionSize = settings.TargetPartitionSize;
+
             // The partition size can only be set once (the first time the table is created) so see if it's already been set
+            throw new NotImplementedException("Use new config table to ensure partition size is not changed");
             long partitionSize = GetConfigurationValueOrDefault("partition-size", -1L);
             if (partitionSize == -1L)
             {
                 // Persist the partition size specified in the cluster settings
-                WriteConfigurationValue("partition-size", settings.TargetPartitionSize);
+                WriteConfigurationValue("partition-size", _targetPartitionSize);
             }
-            else if (partitionSize != settings.TargetPartitionSize)
+            else if (partitionSize != _targetPartitionSize)
             {
-                throw new ConfigurationException(string.Format(InvalidPartitionSizeException, partitionSize, settings.TargetPartitionSize));
+                throw new ConfigurationException(string.Format(InvalidPartitionSizeException, partitionSize, _targetPartitionSize));
             }
         }
 
         public override async Task ReplayMessagesAsync(IActorContext context, string persistenceId, long fromSequenceNr, long toSequenceNr, long max,
                                                        Action<IPersistentRepresentation> replayCallback)
         {
-            long partitionNumber = GetPartitionNumber(fromSequenceNr);
+            long partitionNumber = GetPartitionNumber(fromSequeещвщnceNr);
 
             // A sequence number may have been moved to the next partition if it was part of a batch that was too large
             // to write to a single partition
@@ -161,15 +166,10 @@ namespace Akka.Persistence.Cassandra.Journal
         {
             fromSequenceNr = Math.Max(1L, fromSequenceNr);
 
-            var res = await _session.ExecuteAsync(_selectDeletedTo.Bind(persistenceId)).ConfigureAwait(false);
-            var deletedToRow = res.SingleOrDefault();
-            // TODO: continue to port logic to read higest sequence number
-            var deletedTo = 0L;
-            if (deletedToRow != null) 
-                deletedTo = deletedToRow.GetValue<long>("deleted_to");
-
-            long partitionNumber = GetPartitionNumber(fromSequenceNr);
-            long currentSnr = fromSequenceNr;
+            var highestDeletedSqnr = await HighestDeletedSequenceNumber(persistenceId);
+            fromSequenceNr = Math.Max(fromSequenceNr, highestDeletedSqnr);
+            var partitionNumber = GetPartitionNumber(fromSequenceNr);
+            var currentSnr = fromSequenceNr;
 
 
 
@@ -178,7 +178,6 @@ namespace Akka.Persistence.Cassandra.Journal
             {
                 var rowSet = await _session.ExecuteAsync(_selectHighestSequenceNumber.Bind(persistenceId, partitionNumber)).ConfigureAwait(false);
 
-                // If header doesn't exist, just bail on the non-existent partition
                 var sequenceNumberRow = rowSet.SingleOrDefault();
                 if (sequenceNumberRow == null)
                     break;
@@ -194,6 +193,17 @@ namespace Akka.Persistence.Cassandra.Journal
             }
 
             return currentSnr;
+        }
+
+        private async Task<long> HighestDeletedSequenceNumber(string persistenceId)
+        {
+            var res = await _session.ExecuteAsync(_selectDeletedTo.Bind(persistenceId)).ConfigureAwait(false);
+            var deletedToRow = res.SingleOrDefault();
+            // TODO: continue to port logic to read higest sequence number
+            var deletedTo = 0L;
+            if (deletedToRow != null)
+                deletedTo = deletedToRow.GetValue<long>("deleted_to");
+            return deletedTo;
         }
 
 
@@ -349,88 +359,47 @@ namespace Akka.Persistence.Cassandra.Journal
             return e;
         }
 
+        private long MinSequenceNumber(long partitionNumber)
+        {
+            return partitionNumber*_targetPartitionSize + 1;
+        }
+
         protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)
         {
-            long maxPartitionNumber = GetPartitionNumber(toSequenceNr) + 1L;
-            long partitionNumber = 0L;
+            
 
-            while (partitionNumber <= maxPartitionNumber)
+            var fromSnr = ReadLowestSequenceNumber(persistenceId, 1L);
+            var lowestPartitionNumber = GetPartitionNumber(fromSnr);
+            var toSnr = Math.Min(toSequenceNr, await ReadHighestSequenceNrAsync(persistenceId, fromSnr));
+            var maxPartitionNumber = GetPartitionNumber(toSequenceNr) + 1L;
+            
+            for (var partitionNumber = lowestPartitionNumber; partitionNumber < maxPartitionNumber; partitionNumber++)
             {
-                // Check for header and deleted to sequence number in parallel
-                RowSet[] rowSets = await GetHeaderAndDeletedTo(persistenceId, partitionNumber).ConfigureAwait(false);
-
-                // If header doesn't exist, just bail on the non-existent partition
-                Row headerRow = rowSets[0].SingleOrDefault();
-                if (headerRow == null)
-                    return;
-
-                // Start deleting either from the first sequence number after the last deletion, or the beginning of the partition
-                Row deletedToRow = rowSets[1].SingleOrDefault();
-                long deleteFrom = deletedToRow == null
-                                      ? headerRow.GetValue<long>("sequence_number")
-                                      : deletedToRow.GetValue<long>("sequence_number") + 1L;
-                
-                // Nothing to delete if we're going to start higher than the specified sequence number
-                if (deleteFrom > toSequenceNr)
-                    return;
-
-                // Get the last sequence number in the partition and try to avoid tombstones by skipping deletes
-                IStatement getLastMessageSequence = _selectLastMessageSequence.Bind(persistenceId, partitionNumber, deleteFrom)
-                                                                              .SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency);
-                RowSet lastSequenceRows = await _session.ExecuteAsync(getLastMessageSequence).ConfigureAwait(false);
-                
-                // If we have a sequence number, we've got messages to delete still in the partition
-                Row lastSequenceRow = lastSequenceRows.SingleOrDefault();
-                if (lastSequenceRow != null)
+                /* TODO: implement cassandra2x compatibility 
+                var rowSet =
+                    await _session.ExecuteAsync(_selectHighestSequenceNumber.Bind(persistenceId, partitionNumber));
+                var row = rowSet.First();
+                var partitionInfo = new PartitionInfo
                 {
-                    // Delete either to the end of the partition or to the number specified, whichever comes first
-                    long deleteTo = Math.Min(lastSequenceRow.GetValue<long>("sequence_number"), toSequenceNr);
-                    // Permanently delete using batches in parallel
-                    long batchFrom = deleteFrom;
-                    long batchTo;
-                    var deleteTasks = new List<Task>();
-                    do
-                    {
-                        batchTo = Math.Min(batchFrom + _maxDeletionBatchSize - 1L, deleteTo);
-                        for (long seq = batchFrom; seq <= batchTo; seq++)
-                        {
-                            var deleteStatement = _deleteMessagePermanent.Bind(persistenceId, partitionNumber, seq);
-                            deleteStatement.SetConsistencyLevel( _cassandraExtension.JournalSettings.WriteConsistency);
-                            deleteStatement.SetRetryPolicy(_deleteRetryPolicy);
-                            deleteTasks.Add(_session.ExecuteAsync(deleteStatement));
-                        }
-                        batchFrom = batchTo + 1L;
-                    } while (batchTo < deleteTo);
-
-                    await Task.WhenAll(deleteTasks).ConfigureAwait(false);
-                    
-                    // If we've deleted everything we're supposed to, no need to continue
-                    if (deleteTo == toSequenceNr)
-                        return;
-                }
-                
-                // Go to next partition
-                partitionNumber++;
+                    PartitionNumber = partitionNumber,
+                    MinSequenceNumber = MinSequenceNumber(partitionNumber),
+                    MaxSequenceNumber = Math.Min(row.GetValue<long>("sequence_number"), toSnr)
+                };
+                */
+                await _session.ExecuteAsync(_deleteMessages.Bind(persistenceId, partitionNumber, toSnr));
             }
+            await _session.ExecuteAsync(_insertDeletedTo.Bind(persistenceId, toSnr));
         }
 
-//        private Task<RowSet[]> GetHeaderAndDeletedTo(string persistenceId, long partitionNumber)
-//        {
-//            return Task.WhenAll(new[]
-//            {
-//                _selectHeaderSequence.Bind(persistenceId, partitionNumber).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency),
-//                _selectDeletedToSequence.Bind(persistenceId, partitionNumber).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency)
-//            }.Select(_session.ExecuteAsync));
-//        }
-
-        private IPersistentRepresentation MapRowToPersistentRepresentation(Row row, long deletedTo)
+        private long ReadLowestSequenceNumber(string persistenceId, long fromSequenceNumber)
         {
-            IPersistentRepresentation pr = Deserialize(row.GetValue<byte[]>("event"));
-            if (pr.SequenceNr <= deletedTo)
-                pr = pr.Update(pr.SequenceNr, pr.PersistenceId, true, pr.Sender, pr.WriterGuid);
+            var iterator = new MessageIterator(persistenceId, fromSequenceNumber, long.MaxValue, long.MaxValue, this);
+            var result = fromSequenceNumber;
+            while (iterator.MoveNext() && !iterator.Current.IsDeleted) result = iterator.Current.SequenceNr;
+            return result;
 
-            return pr;
         }
+
 
         private long GetPartitionNumber(long sequenceNumber)
         {
@@ -442,36 +411,7 @@ namespace Akka.Persistence.Cassandra.Journal
             return (sequenceNumber - 1L)%_cassandraExtension.JournalSettings.TargetPartitionSize == 0L;
         }
 
-        private T GetConfigurationValueOrDefault<T>(string key, T defaultValue)
-        {
-            IStatement bound = _selectConfigurationValue.Bind(key).SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency);
-            RowSet rows = _session.Execute(bound);
-            Row row = rows.SingleOrDefault();
-            if (row == null)
-                return defaultValue;
 
-            IPersistentRepresentation persistent = Deserialize(row.GetValue<byte[]>("event"));
-            return (T) persistent.Payload;
-        }
-
-        private void WriteConfigurationValue<T>(string key, T value)
-        {
-            var persistent = new Persistent(value);
-            IStatement bound = _writeConfigurationValue.Bind(key, Serialize(persistent))
-                                                       .SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency);
-            _session.Execute(bound);
-        }
-
-        private IPersistentRepresentation Deserialize(byte[] bytes)
-        {
-            return (IPersistentRepresentation) _serializer.FromBinary(bytes, PersistentRepresentationType);
-        }
-
-        private byte[] Serialize(IPersistentRepresentation message)
-        {
-            return _serializer.ToBinary(message);
-        }
-        
         protected override void PostStop()
         {
             base.PostStop();
@@ -482,6 +422,185 @@ namespace Akka.Persistence.Cassandra.Journal
                 _session = null;
             }
         }
+
+
+        private class SerializedAtomicWrite
+        {
+            public string PersistenceId { get; set; }
+            public IEnumerable<Serialized> Payload { get; set; }
+        }
+
+        private class Serialized
+        {
+            public string PersistenceId { get; set; }
+            public long SequenceNr { get; set; }
+            public byte[] SerializedData { get; set; }
+            public IImmutableSet<string> Tags { get; set; }
+            public string EventManifest { get; set; }
+            public string SerManifest { get; set; }
+            public int SerId { get; set; }
+            public string WriterUuid { get; set; }
+        }
+
+
+        private class PartitionInfo
+        {
+            public long PartitionNumber { get; set; }
+            public long MinSequenceNumber { get; set; }
+            public long MaxSequenceNumber { get; set; }
+        }
+
+        private class RowIteratorParams
+        {
+            public ISession Session { get; }
+            public PreparedStatement SelectMessagesStatement { get; }
+            public PreparedStatement CheckInUseStatement { get; }
+
+            public RowIteratorParams(ISession session, PreparedStatement selectMessagesStatement, PreparedStatement checkInUseStatement)
+            {
+                Session = session;
+                SelectMessagesStatement = selectMessagesStatement;
+                CheckInUseStatement = checkInUseStatement;
+            }
+        }
+        private class RowIterator: IEnumerator<Row>
+        {
+            public string PersistenceId { get; private set; }
+            public long FromSequenceNr { get; private set; }
+            public long ToSequenceNr { get; private set; }
+
+            private long _currentSnr;
+            private long _currentPnr;
+            private IEnumerator<Row> _iterator;
+            private readonly RowIteratorParams _iteratorParams;
+            private readonly Func<IEnumerator<Row>> _newIterator;
+            public RowIterator(string persistenceId, long fromSequenceNr, long toSequenceNr, RowIteratorParams iteratorParams)
+            {
+                PersistenceId = persistenceId;
+                FromSequenceNr = fromSequenceNr;
+                ToSequenceNr = toSequenceNr;
+                _iteratorParams = iteratorParams;
+                _newIterator =
+                    () =>
+                        _iteratorParams.Session.Execute(_iteratorParams.SelectMessagesStatement.Bind(
+                            PersistenceId, _currentPnr)).GetEnumerator();
+                _iterator = _newIterator();
+            }
+            private bool IsInUse(string persistenceId, long currentPartitionNumber)
+            {
+                var resultSet = _iteratorParams.Session.Execute(_iteratorParams.CheckInUseStatement.Bind(persistenceId, currentPartitionNumber));
+                return !resultSet.IsExhausted() && resultSet.First().GetValue<bool>("used");
+            }
+
+            public void Dispose()
+            {
+                throw new NotImplementedException();
+            }
+
+            public Row Current => _iterator.Current;
+
+            public bool MoveNext()
+            {
+                if (_iterator.MoveNext())
+                {
+                    _currentSnr = _iterator.Current.GetValue<long>("sequence_number");
+                    return true;
+                }
+                if (!IsInUse(PersistenceId, _currentPnr))
+                {
+                    return false;
+                }
+                _currentPnr = _currentPnr+1;
+                FromSequenceNr = _currentSnr;
+                _iterator = _newIterator();
+                return MoveNext();
+            }
+
+            public void Reset()
+            {
+                _iterator.Reset();
+            }
+
+            object IEnumerator.Current => Current;
+        }
+
+        private class MessageIterator: IEnumerator<IPersistentRepresentation>
+        {
+            private readonly long _max;
+            private IPersistentRepresentation _current;
+            private IPersistentRepresentation _next;
+            private long _mcnt;
+            private RowIterator _iter;
+
+            public MessageIterator(string persistenceId, long fromSequenceNr, long toSequenceNr, long max, CassandraJournal jounrnal)
+            {
+                _max = max;
+                var initialFromSequenceNr = Math.Max(jounrnal.HighestDeletedSequenceNumber(persistenceId).Result + 1,
+                    fromSequenceNr);
+                _iter = new RowIterator(
+                    persistenceId,
+                    initialFromSequenceNr, 
+                    toSequenceNr, 
+                    new RowIteratorParams(jounrnal._session, jounrnal._selectMessages, jounrnal._checkInUse));
+            }
+
+            private void Fetch()
+            {
+                _current = _next;
+                _next = null;
+                while (_iter.MoveNext() && _next == null)
+                {
+                    var row = _iter.Current;
+                    var snr = row.GetValue<long>("sequence_number");
+                    var msg = row.GetValue<byte[]>("message");
+                    if (msg!=null) throw new NotImplementedException("Backward compatibility is not yet implemented");
+                    var result = new Persistent(
+                        payload: DeserializeEvent(row),
+                        sequenceNr:row.GetValue<long>("sequence_number"),
+                        persistenceId:row.GetValue<string>("persistence_id"),
+                        manifest:row.GetValue<string>("event_manifest"),
+                        isDeleted:false,
+                        sender:null,
+                        writerGuid:row.GetValue<string>("writer_uuid")
+                        );
+                    // there may be duplicates returned by iter
+                    // (on scan boundaries within a partition)
+                    if (snr == _current.SequenceNr) _current = result;
+                    else _next = result;
+                }
+            }
+
+            private object DeserializeEvent(Row row)
+            {
+                return Context.System.Serialization.Deserialize(
+                    row.GetValue<byte[]>("event"),
+                    row.GetValue<int>("ser_id"),
+                    row.GetValue<string>("ser_manifest"));
+            }
+
+            public void Dispose()
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool MoveNext()
+            {
+                Fetch();
+                _mcnt = _mcnt + 1;
+                return _next != null && _mcnt < _max;
+
+            }
+
+            public void Reset()
+            {
+                throw new NotImplementedException();
+            }
+
+            public IPersistentRepresentation Current => _current;
+
+            object IEnumerator.Current => Current;
+        }
+
     }
 
     public class FixedRetryPolicy: IRetryPolicy
