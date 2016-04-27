@@ -167,7 +167,7 @@ namespace Akka.Persistence.Cassandra.Query
                         }, TaskContinuationOptions.OnlyOnRanToCompletion);
                 }, TaskContinuationOptions.OnlyOnRanToCompletion)
                 .Unwrap()
-                .PipeTo(Self, Self);
+                .PipeTo(Self);
         }
 
         private Receive Starting()
@@ -273,7 +273,7 @@ namespace Akka.Persistence.Cassandra.Query
             {
                 resultSet.FetchMoreResultsAsync()
                     .ContinueWith(t => new FetchedResultSet(resultSet), TaskContinuationOptions.OnlyOnRanToCompletion)
-                    .PipeTo(Self, Self);
+                    .PipeTo(Self);
                 return Awaiting(resultSet, state, finished);
             }
 
@@ -289,8 +289,8 @@ namespace Akka.Persistence.Cassandra.Query
             }
             if (ShouldRequestMore(exhausted, state, finished, @continue))
             {
-                if (finished) RequestNextFinished(state, resultSet).PipeTo(Self, Self);
-                else RequestNext(state, resultSet).PipeTo(Self, Self);
+                if (finished) RequestNextFinished(state, resultSet).PipeTo(Self);
+                else RequestNext(state, resultSet).PipeTo(Self);
                 return Awaiting(resultSet, state, finished);
             }
             return Idle(resultSet, state, finished);
