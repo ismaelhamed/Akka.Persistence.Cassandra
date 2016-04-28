@@ -48,9 +48,31 @@ namespace Akka.Persistence.Cassandra
             return TimeUuid.NewId(MinNodeId, MinClockId, date);
         }
 
+        public static TimeUuid StartOf(this long ticks)
+        {
+            return StartOf(new DateTimeOffset(ticks, TimeSpan.Zero));
+        }
+
         public static TimeUuid EndOf(this DateTimeOffset date)
         {
             return TimeUuid.NewId(MaxNodeId, MaxClockId, date);
+        }
+
+        public static TimeUuid EndOf(this long ticks)
+        {
+            return EndOf(new DateTimeOffset(ticks, TimeSpan.Zero));
+        }
+
+        public static Exception Unwrap(this Exception exception)
+        {
+            var aggregateException = exception as AggregateException;
+            if (aggregateException != null)
+            {
+                aggregateException = aggregateException.Flatten();
+                if (aggregateException.InnerExceptions.Count == 1)
+                    return aggregateException.InnerExceptions[0];
+            }
+            return exception;
         }
     }
 }

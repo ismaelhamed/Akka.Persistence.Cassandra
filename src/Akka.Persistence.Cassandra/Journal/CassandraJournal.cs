@@ -255,10 +255,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 return await _session.ExecuteAsync(batch);
             });
 
-
-
-            return await Task<ImmutableList<Exception>>.Factory.ContinueWhenAll(writeTasks.ToArray(), tasks => tasks.Select(t => t.IsFaulted ? TryUnwrapException(t.Exception) : null).ToImmutableList());
-
+            return await Task<ImmutableList<Exception>>.Factory.ContinueWhenAll(writeTasks.ToArray(), tasks => tasks.Select(t => t.IsFaulted ? t.Exception.Unwrap() : null).ToImmutableList());
         }
 
         private BoundStatement BindMessageStatement(string persistenceId, long maxPnr, Serialized message, TimeUuid timeUuid, TimeBucket timeBucket, params string[] tags)
@@ -327,18 +324,6 @@ namespace Akka.Persistence.Cassandra.Journal
                 SerId = serializer.Identifier,
                 WriterUuid = p.WriterGuid
             };
-        }
-
-        private Exception TryUnwrapException(Exception e)
-        {
-            var aggregateException = e as AggregateException;
-            if (aggregateException != null)
-            {
-                aggregateException = aggregateException.Flatten();
-                if (aggregateException.InnerExceptions.Count == 1)
-                    return aggregateException.InnerExceptions[0];
-            }
-            return e;
         }
 
         protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)

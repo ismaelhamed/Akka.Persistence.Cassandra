@@ -136,7 +136,7 @@ namespace Akka.Persistence.Cassandra.Snapshot
                 {
                     _log.Warning(
                         // ReSharper disable once PossibleNullReferenceException
-                        $"Failed to load snapshot, trying older one. Caused by: {(t.IsFaulted ? t.Exception.Message : "Cancelled")}");
+                        $"Failed to load snapshot, trying older one. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "Cancelled")}");
                     return LoadNAsync(metadata.RemoveAt(0));
                 }, TaskContinuationOptions.NotOnRanToCompletion)
                 .Unwrap();

@@ -97,7 +97,7 @@ namespace Akka.Persistence.Cassandra
                     {
                         _underlyingSession.CompareAndSet(s, null);
                         _log.Warning(
-                            $"Failed to connect to Cassandra and initialize. It will be retried on demand. Caused by: {(t.IsFaulted ? t.Exception.Message : "task cancellation")}");
+                            $"Failed to connect to Cassandra and initialize. It will be retried on demand. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "task cancellation")}");
                     }, TaskContinuationOptions.NotOnRanToCompletion);
                     _system.RegisterOnTermination(() =>
                     {
@@ -158,7 +158,7 @@ namespace Akka.Persistence.Cassandra
                     else
                     {
                         TryAgain(setup, promise, count - 1,
-                            t.IsFaulted ? (Exception) t.Exception : new ApplicationException("Cancelled"));
+                            t.IsFaulted ? t.Exception.Unwrap() : new OperationCanceledException("Setup canceled, possibly due to timing out."));
                     }
                 });
             }
