@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Akka.Actor;
 using Akka.Configuration;
 using Akka.Persistence.Cassandra.Compaction;
@@ -25,6 +26,7 @@ namespace Akka.Persistence.Cassandra
     /// </summary>
     public abstract class CassandraSettings
     {
+        private static readonly Regex KeyspaceNameRegex = new Regex("^(\"[a-zA-Z]{1}[\\w]{0,47}\"|[a-zA-Z]{1}[\\w]{0,47})$");
         /// <summary>
         /// The name (key) of the session to use when resolving an ISession instance. When using default session management,
         /// this points at configuration under the "cassandra-sessions" section where the session's configuration is found.
@@ -112,6 +114,8 @@ namespace Akka.Persistence.Cassandra
             ConfigTable = config.GetString("config-table");
             MetadataTable = config.GetString("metadata-table");
             TablesAutocreate = config.GetBoolean("tables-autocreate");
+            ConfigTable = ValidateTableName(config.GetString("config-table"));
+            MetadataTable = config.GetString("metadata-table");
 
             // Quote keyspace and table if necessary
             if (config.GetBoolean("use-quoted-identifiers"))
@@ -192,6 +196,20 @@ namespace Akka.Persistence.Cassandra
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Validates that the supplied table name meets Cassandra's table name requirements.
+        /// According to docs here: https://cassandra.apache.org/doc/cql3/CQL.html#createTableStmt.
+        /// </summary>
+        /// <param name="tableName">the table name to validate</param>
+        /// <returns>table name if valid, throws ArgumentException otherwise</returns>
+        public string ValidateTableName(string tableName)
+        {
+            if (KeyspaceNameRegex.IsMatch(tableName))
+                return tableName;
+            throw new ArgumentException(
+                $"Invalid table name. A table name may contain 48 or fewer alphanumeric charachters and underscores. Value was: {tableName}");
         }
     }
 }

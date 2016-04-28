@@ -12,6 +12,8 @@ namespace Akka.Persistence.Cassandra.Journal
     /// </summary>
     public class CassandraJournalSettings : CassandraSettings
     {
+        public const string TargetPartitionProperty = "target-partition-size";
+
         /// <summary>
         /// The approximate number of rows per partition to use. Cannot be changed after table creation.
         /// </summary>
@@ -31,6 +33,10 @@ namespace Akka.Persistence.Cassandra.Journal
         /// The number of retries when a write request returns a TimeoutException or an UnavailableException.
         /// </summary>
         public int WriteRetries { get; private set; }
+
+        public long GcGraceSeconds { get; }
+
+        public bool Cassandra2xCompat { get; }
 
         /// <summary>
         /// Maximum number of messages that will be batched when using `persistAsync`. 
@@ -54,10 +60,16 @@ namespace Akka.Persistence.Cassandra.Journal
         public CassandraJournalSettings(ActorSystem system, Config config)
             : base(system, config)
         {
+<<<<<<< 0ce9fa2c77aab67951f1d50cb9d9877cbec424ed
             TargetPartitionSize = config.GetInt("target-partition-size");
+=======
+            TargetPartitionSize = config.GetInt(TargetPartitionProperty);
+>>>>>>> Journal Cassandra statements
             MaxResultSize = config.GetInt("max-result-size"); // TODO: not used in the scala version?...
             DeleteRetries = config.GetInt("delete-retries");
             WriteRetries = config.GetInt("write-retries");
+            GcGraceSeconds = config.GetLong("gc-grace-seconds");
+            Cassandra2xCompat = config.GetBoolean("cassandra-2x-compat");
             MaxMessageBatchSize = config.GetInt("max-message-batch-size");
             MaxResultSizeReplay = config.GetInt("max-result-size-replay");
             var tags = new Dictionary<string, int>();

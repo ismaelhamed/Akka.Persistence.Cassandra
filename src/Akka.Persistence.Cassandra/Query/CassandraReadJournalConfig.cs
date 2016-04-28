@@ -20,7 +20,7 @@ namespace Akka.Persistence.Cassandra.Query
 
             EventsByTagView = writePluginConfig.EventsByTagView;
             Keyspace = writePluginConfig.Keyspace;
-            TargetPartitionSize = writePluginConfig.PartitionSize;
+            TargetPartitionSize = writePluginConfig.TargetPartitionSize;
             Table = writePluginConfig.Table;
             PubsubMinimumInterval = writePluginConfig.PubsubMinimumInterval;
         }

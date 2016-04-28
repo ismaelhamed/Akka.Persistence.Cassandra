@@ -91,7 +91,6 @@ namespace Akka.Persistence.Cassandra.Journal
 
             // The partition size can only be set once (the first time the table is created) so see if it's already been set
             CheckCorrectPartitionSize(configTable);
-
         }
 
         private void CheckCorrectPartitionSize(string configTableName)
