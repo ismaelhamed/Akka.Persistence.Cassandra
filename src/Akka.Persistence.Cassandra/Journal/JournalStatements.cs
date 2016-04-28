@@ -93,7 +93,7 @@
         public const string SelectConfig = @"SELECT * FROM {0}";
 
         public const string WriteConfig = @"
-            INSERT INTO {configTableName} (property, value) VALUES(?, ?) IF NOT EXISTS";
+            INSERT INTO {0} (property, value) VALUES(?, ?) IF NOT EXISTS";
 
         public const string SelectDeletedTo = @"
             SELECT deleted_to FROM {0}

@@ -21,37 +21,32 @@ namespace Akka.Persistence.Cassandra.Journal
         private const string InvalidPartitionSizeException =
             "Partition size cannot change after initial table creation. (Value at creation: {0}, Currently configured value in Akka configuration: {1})";
 
-        private static readonly Type PersistentRepresentationType = typeof (IPersistentRepresentation);
-
         private readonly CassandraExtension _cassandraExtension;
-        private readonly Serializer _serializer;
-        private readonly int _maxDeletionBatchSize;
 
         private ISession _session;
         private PreparedStatement _writeMessage;
         private PreparedStatement _selectHighestSequenceNumber;
         private PreparedStatement _selectMessages;
         private PreparedStatement _deleteMessages;
-        private readonly LoggingRetryPolicy _deleteRetryPolicy;
-        private readonly LoggingRetryPolicy _writeRetryPolicy;
         private PreparedStatement _checkInUse;
         private PreparedStatement _writeInUse;
         private PreparedStatement _selectDeletedTo;
         private PreparedStatement _insertDeletedTo;
-        private int _maxTagsPerEvent;
-        private IReadOnlyDictionary<string, int> _tags;
+        private readonly int _maxTagsPerEvent;
+        private readonly IReadOnlyDictionary<string, int> _tags;
+        private readonly LoggingRetryPolicy _deleteRetryPolicy;
+        private readonly LoggingRetryPolicy _writeRetryPolicy;
         private long _targetPartitionSize;
+        private int _maxResultSizeReplay;
 
         public CassandraJournal()
         {
             _cassandraExtension = CassandraPersistence.Instance.Apply(Context.System);
-            _serializer = Context.System.Serialization.FindSerializerForType(PersistentRepresentationType);
 
             // Use setting from the persistence extension when batch deleting
             var journalSettings = _cassandraExtension.JournalSettings;
             _deleteRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.DeleteRetries));
             _writeRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(journalSettings.WriteRetries));
-            _maxDeletionBatchSize = journalSettings.MaxMessageBatchSize;
             _maxTagsPerEvent = journalSettings.MaxTagsPerEvent;
             _tags = journalSettings.Tags;
         }
@@ -64,18 +59,18 @@ namespace Akka.Persistence.Cassandra.Journal
             CassandraJournalSettings settings = _cassandraExtension.JournalSettings;
             _session = _cassandraExtension.SessionManager.ResolveSession(settings.SessionKey);
             
-            // Create keyspace if necessary and always try to create table
+            // Create keyspace if necessary and always try to create the tables
             if (settings.KeyspaceAutocreate)
                 _session.Execute(string.Format(JournalStatements.CreateKeyspace, settings.Keyspace, settings.KeyspaceCreationOptions));
 
-            var fullyQualifiedTableName = string.Format("{0}.{1}", settings.Keyspace, settings.Table);
+            var fullyQualifiedTableName = $"{settings.Keyspace}.{settings.Table}";
             var metaTableName = $"{settings.Keyspace}.{settings.MetadataTable}";
-
+            var configTable = settings.ConfigTable;
             var createTable = string.IsNullOrWhiteSpace(settings.TableCreationProperties)
                                      ? string.Format(JournalStatements.CreateTable, fullyQualifiedTableName, string.Empty, string.Empty)
                                      : string.Format(JournalStatements.CreateTable, fullyQualifiedTableName, " WITH ",
                                                      settings.TableCreationProperties);
-            var createConfigTable = string.Format(JournalStatements.CreateConfigTable, $"{settings.Keyspace}.{settings.MetadataTable}");
+            var createConfigTable = string.Format(JournalStatements.CreateConfigTable, $"{settings.Keyspace}.{configTable}");
             var createMetaTable = string.Format(JournalStatements.CreateMetatdataTable, metaTableName);
             _session.Execute(createTable);
             _session.Execute(createConfigTable);
@@ -92,74 +87,57 @@ namespace Akka.Persistence.Cassandra.Journal
             _selectHighestSequenceNumber = _session.PrepareFormat(JournalStatements.SelectHighestSequenceNumber, fullyQualifiedTableName);
 
             _targetPartitionSize = settings.TargetPartitionSize;
+            _maxResultSizeReplay = settings.MaxResultSizeReplay;
 
             // The partition size can only be set once (the first time the table is created) so see if it's already been set
-            throw new NotImplementedException("Use new config table to ensure partition size is not changed");
-            long partitionSize = GetConfigurationValueOrDefault("partition-size", -1L);
-            if (partitionSize == -1L)
+            CheckCorrectPartitionSize(configTable);
+
+        }
+
+        private void CheckCorrectPartitionSize(string configTableName)
+        {
+            var storedConfig = _session.Execute(_session.PrepareFormat(JournalStatements.SelectConfig, configTableName).Bind())
+                .ToDictionary(r => r.GetValue<string>("property"), r => r.GetValue<string>("value"));
+            string oldValue;
+            Action<string> asserPartitionSize = size =>
             {
-                // Persist the partition size specified in the cluster settings
-                WriteConfigurationValue("partition-size", _targetPartitionSize);
+                int oldPartitionSize;
+                if (!int.TryParse(size, out oldPartitionSize) || oldPartitionSize != _targetPartitionSize)
+                    throw new ConfigurationException(string.Format(InvalidPartitionSizeException, size,
+                        _targetPartitionSize));
+
+            };
+            if (storedConfig.TryGetValue("target-partition-size", out oldValue))
+            {
+                asserPartitionSize(oldValue);
             }
-            else if (partitionSize != _targetPartitionSize)
+            else
             {
-                throw new ConfigurationException(string.Format(InvalidPartitionSizeException, partitionSize, _targetPartitionSize));
+                var query = _session.Execute(
+                    _session.PrepareFormat(JournalStatements.WriteConfig, configTableName)
+                        .Bind("target-partition-size", _targetPartitionSize));
+                var rowEnum = query.GetEnumerator();
+                rowEnum.MoveNext();
+                if (!rowEnum.Current.GetValue<bool>("applied"))
+                {
+                    while(rowEnum.MoveNext())
+                    {
+                        oldValue = rowEnum.Current.GetValue<string>("value");
+                        asserPartitionSize(oldValue);
+                    }
+                    
+                }
             }
         }
 
         public override async Task ReplayMessagesAsync(IActorContext context, string persistenceId, long fromSequenceNr, long toSequenceNr, long max,
                                                        Action<IPersistentRepresentation> replayCallback)
         {
-            long partitionNumber = GetPartitionNumber(fromSequeещвщnceNr);
-
-            // A sequence number may have been moved to the next partition if it was part of a batch that was too large
-            // to write to a single partition
-            long maxPartitionNumber = GetPartitionNumber(toSequenceNr) + 1L;
-            long count = 0L;
-
-            while (partitionNumber <= maxPartitionNumber && count < max)
-            {
-                // Check for header and deleted to sequence number in parallel
-                RowSet[] rowSets = await GetHeaderAndDeletedTo(persistenceId, partitionNumber).ConfigureAwait(false);
-
-                // If header doesn't exist, just bail on the non-existent partition
-                if (rowSets[0].SingleOrDefault() == null)
-                    return;
-
-                // See what's been deleted in the partition and if no record found, just use long's min value
-                Row deletedToRow = rowSets[1].SingleOrDefault();
-                long deletedTo = deletedToRow == null ? long.MinValue : deletedToRow.GetValue<long>("sequence_number");
-
-                // Page through messages in the partition
-                bool hasNextPage = true;
-                byte[] pageState = null;
-                while (count < max && hasNextPage)
-                {
-                    // Get next page from current partition
-                    IStatement getRows = _selectMessages.Bind(persistenceId, partitionNumber, fromSequenceNr, toSequenceNr)
-                                                        .SetConsistencyLevel(_cassandraExtension.JournalSettings.ReadConsistency)
-                                                        .SetPageSize(_cassandraExtension.JournalSettings.MaxResultSize)
-                                                        .SetPagingState(pageState)
-                                                        .SetAutoPage(false);
-
-                    RowSet messageRows = await _session.ExecuteAsync(getRows).ConfigureAwait(false);
-                    pageState = messageRows.PagingState;
-                    hasNextPage = pageState != null;
-                    IEnumerator<IPersistentRepresentation> messagesEnumerator =
-                        messageRows.Select(row => MapRowToPersistentRepresentation(row, deletedTo))
-                                   .GetEnumerator();
-
-                    // Process page
-                    while (count < max && messagesEnumerator.MoveNext())
-                    {
-                        replayCallback(messagesEnumerator.Current);
-                        count++;
-                    }
-                }
-                
-                // Go to next partition
-                partitionNumber++;
-            }
+            var readJournal = new CassandraReadJournal(context.System as ExtendedActorSystem,
+                context.System.Settings.Config.GetConfig("cassandra-query-journal"));
+            
+            var events = readJournal.EventsByPersistenceId(persistenceId, fromSequenceNr, toSequenceNr, max, _maxResultSizeReplay, null, "asyncReplayMessages");
+            return events.RunForeach(replayCallback, context.System.Materializer());
         }
 
         public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
@@ -199,7 +177,6 @@ namespace Akka.Persistence.Cassandra.Journal
         {
             var res = await _session.ExecuteAsync(_selectDeletedTo.Bind(persistenceId)).ConfigureAwait(false);
             var deletedToRow = res.SingleOrDefault();
-            // TODO: continue to port logic to read higest sequence number
             var deletedTo = 0L;
             if (deletedToRow != null)
                 deletedTo = deletedToRow.GetValue<long>("deleted_to");
@@ -237,7 +214,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     var message = persistentMessages[0];
                     var statement = BindMessageStatement(persistenceId, maxPnr, message, timeUuid, timeBucket)
                         .SetConsistencyLevel(_cassandraExtension.JournalSettings.WriteConsistency).SetRetryPolicy(_writeRetryPolicy);
-                    // TODO: handle event tags here
+                    // TODO: do publishTagNotification here
                     return await _session.ExecuteAsync(statement);
                 }
 
@@ -253,8 +230,7 @@ namespace Akka.Persistence.Cassandra.Journal
                         {
                             int tagId;
                             if (!_tags.TryGetValue(tag, out tagId)) tagId = 1;
-
-
+                            // TODO: how to set tag values for the existing boundStatement?? Scala version supports the following syntax: bs.setString("tag" + tagId, tag)
                             tagCounts[tagId - 1] = tagCounts[tagId - 1] + 1;
                             var i = 0;
                             while (i < tagCounts.Length)
@@ -298,7 +274,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 message.SerManifest,
                 message.EventManifest,
                 message.SerializedData,
-                null);
+                tags);
         }
 
 
@@ -333,7 +309,13 @@ namespace Akka.Persistence.Cassandra.Journal
             }
             var serEvent = serializer.ToBinary(@event);
 
-            // TODO: figure if we need to check for the transportInformation here
+            // TODO: figure if we need to check for the transportInformation here. Cant find currentTransportInformation so far....
+            // Below is what akka does:
+            // serialize actor references with full address information (defaultAddress)
+            // transportInformation match {
+            //    case Some(ti) ⇒ Serialization.currentTransportInformation.withValue(ti) { doSerializeEvent() }
+            //    case None     ⇒ doSerializeEvent()
+            // }
             return new Serialized
             {
                 PersistenceId = p.PersistenceId,
@@ -359,11 +341,6 @@ namespace Akka.Persistence.Cassandra.Journal
             return e;
         }
 
-        private long MinSequenceNumber(long partitionNumber)
-        {
-            return partitionNumber*_targetPartitionSize + 1;
-        }
-
         protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)
         {
             
@@ -386,9 +363,9 @@ namespace Akka.Persistence.Cassandra.Journal
                     MaxSequenceNumber = Math.Min(row.GetValue<long>("sequence_number"), toSnr)
                 };
                 */
-                await _session.ExecuteAsync(_deleteMessages.Bind(persistenceId, partitionNumber, toSnr));
+                await _session.ExecuteAsync(_deleteMessages.Bind(persistenceId, partitionNumber, toSnr).SetRetryPolicy(_deleteRetryPolicy));
             }
-            await _session.ExecuteAsync(_insertDeletedTo.Bind(persistenceId, toSnr));
+            await _session.ExecuteAsync(_insertDeletedTo.Bind(persistenceId, toSnr).SetRetryPolicy(_deleteRetryPolicy));
         }
 
         private long ReadLowestSequenceNumber(string persistenceId, long fromSequenceNumber)
@@ -443,13 +420,6 @@ namespace Akka.Persistence.Cassandra.Journal
         }
 
 
-        private class PartitionInfo
-        {
-            public long PartitionNumber { get; set; }
-            public long MinSequenceNumber { get; set; }
-            public long MaxSequenceNumber { get; set; }
-        }
-
         private class RowIteratorParams
         {
             public ISession Session { get; }
@@ -465,25 +435,25 @@ namespace Akka.Persistence.Cassandra.Journal
         }
         private class RowIterator: IEnumerator<Row>
         {
-            public string PersistenceId { get; private set; }
-            public long FromSequenceNr { get; private set; }
-            public long ToSequenceNr { get; private set; }
+            private readonly string _persistenceId;
+            private long _fromSequenceNr;
 
             private long _currentSnr;
             private long _currentPnr;
             private IEnumerator<Row> _iterator;
             private readonly RowIteratorParams _iteratorParams;
             private readonly Func<IEnumerator<Row>> _newIterator;
-            public RowIterator(string persistenceId, long fromSequenceNr, long toSequenceNr, RowIteratorParams iteratorParams)
+            public RowIterator(string persistenceId, long fromSequenceNr, long toSequenceNr, CassandraJournal jounrnal)
             {
-                PersistenceId = persistenceId;
-                FromSequenceNr = fromSequenceNr;
-                ToSequenceNr = toSequenceNr;
-                _iteratorParams = iteratorParams;
+                _persistenceId = persistenceId;
+                _fromSequenceNr = fromSequenceNr;
+                _currentSnr = fromSequenceNr;
+                _currentPnr = jounrnal.GetPartitionNumber(fromSequenceNr);
+                _iteratorParams = new RowIteratorParams(jounrnal._session, jounrnal._selectMessages, jounrnal._checkInUse);
                 _newIterator =
                     () =>
-                        _iteratorParams.Session.Execute(_iteratorParams.SelectMessagesStatement.Bind(
-                            PersistenceId, _currentPnr)).GetEnumerator();
+                        jounrnal._session.Execute(_iteratorParams.SelectMessagesStatement.Bind(
+                            _persistenceId, _currentPnr, _fromSequenceNr, toSequenceNr)).GetEnumerator();
                 _iterator = _newIterator();
             }
             private bool IsInUse(string persistenceId, long currentPartitionNumber)
@@ -506,12 +476,12 @@ namespace Akka.Persistence.Cassandra.Journal
                     _currentSnr = _iterator.Current.GetValue<long>("sequence_number");
                     return true;
                 }
-                if (!IsInUse(PersistenceId, _currentPnr))
+                if (!IsInUse(_persistenceId, _currentPnr))
                 {
                     return false;
                 }
                 _currentPnr = _currentPnr+1;
-                FromSequenceNr = _currentSnr;
+                _fromSequenceNr = _currentSnr;
                 _iterator = _newIterator();
                 return MoveNext();
             }
@@ -530,7 +500,7 @@ namespace Akka.Persistence.Cassandra.Journal
             private IPersistentRepresentation _current;
             private IPersistentRepresentation _next;
             private long _mcnt;
-            private RowIterator _iter;
+            private readonly RowIterator _iter;
 
             public MessageIterator(string persistenceId, long fromSequenceNr, long toSequenceNr, long max, CassandraJournal jounrnal)
             {
@@ -541,7 +511,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     persistenceId,
                     initialFromSequenceNr, 
                     toSequenceNr, 
-                    new RowIteratorParams(jounrnal._session, jounrnal._selectMessages, jounrnal._checkInUse));
+                    jounrnal);
             }
 
             private void Fetch()
