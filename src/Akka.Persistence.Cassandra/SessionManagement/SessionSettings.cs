@@ -20,9 +20,9 @@ namespace Akka.Persistence.Cassandra.SessionManagement
 
         public SessionSettings(Config config)
         {
-            if (config == null) throw new ArgumentNullException("config");
+            if (config == null) throw new ArgumentNullException(nameof(config));
 
-            Builder = Cluster.Builder();
+            Builder = global::Cassandra.Cluster.Builder();
             
             // Get IP and port configuration
             int port = config.GetInt("port", 9042);

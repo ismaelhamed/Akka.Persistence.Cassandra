@@ -93,7 +93,12 @@
     <Compile Include="Query\CassandraReadJournalConfig.cs" />
     <Compile Include="Query\CassandraReadStatements.cs" />
     <Compile Include="Query\EventsByPersistenceIdPublisher.cs" />
+    <Compile Include="Query\EventsByTagFetcher.cs" />
+    <Compile Include="Query\EventsByTagPublisher.cs" />
+    <Compile Include="Query\GuidComparer.cs" />
+    <Compile Include="Query\GuidPersistent.cs" />
     <Compile Include="Query\QueryActorPublisher.cs" />
+    <Compile Include="Query\SequenceNumbers.cs" />
     <Compile Include="SessionManagement\CassandraSession.cs" />
     <Compile Include="CassandraSettings.cs" />
     <Compile Include="SessionManagement\SessionSettings.cs">

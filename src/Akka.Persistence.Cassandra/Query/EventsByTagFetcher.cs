@@ -35,7 +35,7 @@ namespace Akka.Persistence.Cassandra.Query
 
         #endregion
 
-        public static Props Props(string tag, TimeBucket timeBucket, Guid fromOffset, Guid toOffset, int limit,
+        public static Props Props(string tag, TimeBucket timeBucket, TimeUuid fromOffset, TimeUuid toOffset, int limit,
             bool backtracking, IActorRef replyTo, ISession session, PreparedStatement preparedSelect,
             Option<SequenceNumbers> sequenceNumbers, CassandraReadJournalConfig settings)
         {
@@ -54,7 +54,7 @@ namespace Akka.Persistence.Cassandra.Query
         private Option<SequenceNumbers> _sequenceNumbers;
         private readonly ILoggingAdapter _log = Context.GetLogger();
 
-        public EventsByTagFetcher(string tag, TimeBucket timeBucket, Guid fromOffset, Guid toOffset, int limit,
+        public EventsByTagFetcher(string tag, TimeBucket timeBucket, TimeUuid fromOffset, TimeUuid toOffset, int limit,
             bool backtracking, IActorRef replyTo, ISession session, PreparedStatement preparedSelect,
             Option<SequenceNumbers> sequenceNumbers, CassandraReadJournalConfig settings)
         {
@@ -78,8 +78,8 @@ namespace Akka.Persistence.Cassandra.Query
 
         public string Tag { get; }
         public TimeBucket TimeBucket { get; }
-        public Guid FromOffset { get; }
-        public Guid ToOffset { get; }
+        public TimeUuid FromOffset { get; }
+        public TimeUuid ToOffset { get; }
         public int Limit { get; }
         public bool Backtracking { get; }
         public IActorRef ReplyTo { get; }

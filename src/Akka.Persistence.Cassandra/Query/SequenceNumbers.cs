@@ -12,6 +12,9 @@ namespace Akka.Persistence.Cassandra.Query
             PossiblyFirst
         }
 
+        public static readonly SequenceNumbers Empty = new SequenceNumbers(ImmutableDictionary<string, int>.Empty,
+            ImmutableDictionary<string, long>.Empty);
+
         public SequenceNumbers(IImmutableDictionary<string, int> intNumbers, IImmutableDictionary<string, long> longNumbers)
         {
             LongNumbers = longNumbers;
