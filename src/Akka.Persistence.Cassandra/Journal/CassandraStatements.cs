@@ -91,7 +91,7 @@ DELETE FROM {tableName} WHERE
     sequence_nr = ?
 ";
 
-            DeleteMessages = config.Cassandra2xCompat
+            DeleteMessages = config.Cassandra2XCompat
                 ? $@"
 DELETE FROM {tableName} WHERE
     persistence_id = ? AND

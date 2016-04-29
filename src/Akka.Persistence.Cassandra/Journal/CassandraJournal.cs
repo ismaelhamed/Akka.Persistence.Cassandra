@@ -6,8 +6,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Configuration;
+using Akka.Persistence.Cassandra.Query;
 using Akka.Persistence.Journal;
 using Akka.Serialization;
+using Akka.Streams;
 using Akka.Util.Internal;
 using Cassandra;
 
@@ -129,7 +131,7 @@ namespace Akka.Persistence.Cassandra.Journal
             }
         }
 
-        public override async Task ReplayMessagesAsync(IActorContext context, string persistenceId, long fromSequenceNr, long toSequenceNr, long max,
+        public override Task ReplayMessagesAsync(IActorContext context, string persistenceId, long fromSequenceNr, long toSequenceNr, long max,
                                                        Action<IPersistentRepresentation> replayCallback)
         {
             var readJournal = new CassandraReadJournal(context.System as ExtendedActorSystem,

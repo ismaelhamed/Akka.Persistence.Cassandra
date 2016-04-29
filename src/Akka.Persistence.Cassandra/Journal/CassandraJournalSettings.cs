@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using Akka.Actor;
 using Akka.Configuration;
 
@@ -36,7 +37,7 @@ namespace Akka.Persistence.Cassandra.Journal
 
         public long GcGraceSeconds { get; }
 
-        public bool Cassandra2xCompat { get; }
+        public bool Cassandra2XCompat { get; }
 
         /// <summary>
         /// Maximum number of messages that will be batched when using `persistAsync`. 
@@ -51,25 +52,30 @@ namespace Akka.Persistence.Cassandra.Journal
 
         public int MaxTagsPerEvent => 3;
 
-        public IReadOnlyDictionary<string, int> Tags { get; private set; }
+        public IReadOnlyDictionary<string, int> Tags { get; }
+
+        public bool EnableEventsByTagQuery { get; }
 
         public string EventsByTagView { get; }
 
         public TimeSpan? PubsubMinimumInterval { get; }
 
+        /// <summary>
+        /// Will be 0 if <see cref="EnableEventsByTagQuery"/> is disabled,
+        /// will be 1 if <see cref="Tags"/> is empty, otherwise the number of configured
+        /// distinct tag identifiers.
+        /// </summary>
+        public int MaxTagId { get; }
+
         public CassandraJournalSettings(ActorSystem system, Config config)
             : base(system, config)
         {
-<<<<<<< 0ce9fa2c77aab67951f1d50cb9d9877cbec424ed
-            TargetPartitionSize = config.GetInt("target-partition-size");
-=======
             TargetPartitionSize = config.GetInt(TargetPartitionProperty);
->>>>>>> Journal Cassandra statements
             MaxResultSize = config.GetInt("max-result-size"); // TODO: not used in the scala version?...
             DeleteRetries = config.GetInt("delete-retries");
             WriteRetries = config.GetInt("write-retries");
             GcGraceSeconds = config.GetLong("gc-grace-seconds");
-            Cassandra2xCompat = config.GetBoolean("cassandra-2x-compat");
+            Cassandra2XCompat = config.GetBoolean("cassandra-2x-compat");
             MaxMessageBatchSize = config.GetInt("max-message-batch-size");
             MaxResultSizeReplay = config.GetInt("max-result-size-replay");
             var tags = new Dictionary<string, int>();
@@ -86,6 +92,10 @@ namespace Akka.Persistence.Cassandra.Journal
             Tags = new ReadOnlyDictionary<string,int>(tags);
             EventsByTagView = config.GetString("events-by-tag-view");
             PubsubMinimumInterval = GetPubsubMinimumInterval(config);
+
+            EnableEventsByTagQuery = !Cassandra2XCompat && config.GetBoolean("enable-events-by-tag-query");
+
+            MaxTagId = !EnableEventsByTagQuery ? 0 : (Tags.Count == 0 ? 1 : Tags.Values.Max());
         }
 
         private TimeSpan? GetPubsubMinimumInterval(Config config)
