@@ -110,6 +110,7 @@
     <Compile Include="CassandraPersistence.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Journal\PubSubThrotler.cs" />
     <Compile Include="Journal\Tagged.cs" />
     <Compile Include="CassandraSession.cs" />
     <Compile Include="Compaction\BaseCompactionStrategy.cs" />
