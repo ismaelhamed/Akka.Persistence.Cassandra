@@ -5,7 +5,7 @@
     /// </summary>
     internal class JournalStatements
     {
-        JournalStatements(CassandraJournalSettings seetings)
+        JournalStatements(CassandraJournalConfig seetings)
         {
             //seetings.ta
         }

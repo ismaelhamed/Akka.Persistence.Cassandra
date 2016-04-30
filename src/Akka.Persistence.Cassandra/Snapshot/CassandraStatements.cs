@@ -95,8 +95,9 @@ SELECT persistence_id, sequence_nr, timestamp FROM {tableName} WHERE
                 : Task.FromResult(new object());
 
             if (config.TablesAutocreate)
-                return keyspaceTask.ContinueWith(_ => session.ExecuteAsync(new SimpleStatement(CreateTable)),
-                    TaskContinuationOptions.OnlyOnRanToCompletion);
+                return keyspaceTask
+                    .OnRanToCompletion(() => session.ExecuteAsync(new SimpleStatement(CreateTable)))
+                    .Unwrap();
             return keyspaceTask;
         }
     }

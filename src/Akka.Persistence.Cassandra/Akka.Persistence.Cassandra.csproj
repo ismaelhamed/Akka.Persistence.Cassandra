@@ -110,6 +110,7 @@
     <Compile Include="CassandraPersistence.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Journal\CassandraJournal.Recovery.cs" />
     <Compile Include="Journal\PubSubThrotler.cs" />
     <Compile Include="Journal\Tagged.cs" />
     <Compile Include="CassandraSession.cs" />
@@ -134,20 +135,14 @@
     <Compile Include="Query\GuidPersistent.cs" />
     <Compile Include="Query\QueryActorPublisher.cs" />
     <Compile Include="Query\SequenceNumbers.cs" />
-    <Compile Include="SessionManagement\CassandraSession.cs" />
-    <Compile Include="CassandraSettings.cs" />
-    <Compile Include="SessionManagement\SessionSettings.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="SessionManagement\DefaultSessionManager.cs" />
+    <Compile Include="CassandraPluginConfig.cs" />
     <Compile Include="ExtensionMethods.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="SessionManagement\IManageSessions.cs" />
     <Compile Include="Journal\CassandraJournal.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Journal\CassandraJournalSettings.cs">
+    <Compile Include="Journal\CassandraJournalConfig.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Journal\JournalStatements.cs" />

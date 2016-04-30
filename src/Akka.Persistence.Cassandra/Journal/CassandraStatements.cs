@@ -8,10 +8,10 @@ namespace Akka.Persistence.Cassandra.Journal
 {
     internal class CassandraStatements
     {
-        private readonly CassandraJournalSettings _config;
+        private readonly CassandraJournalConfig _config;
         private readonly string _createEventsByTagMaterializedView;
 
-        public CassandraStatements(CassandraJournalSettings config)
+        public CassandraStatements(CassandraJournalConfig config)
         {
             _config = config;
             var tableName = $"{config.Keyspace}.{config.Table}";
@@ -204,7 +204,7 @@ VALUES(?, ?, true)
         /// The materialized view for eventsByTag query is not created if <paramref name="maxTagId"/> is 0.
         /// </para>
         /// </summary>
-        public Task ExecuteCreateKeyspaceAndTables(ISession session, CassandraJournalSettings config, int maxTagId)
+        public Task ExecuteCreateKeyspaceAndTables(ISession session, CassandraJournalConfig config, int maxTagId)
         {
             return CassandraSession.SerializedExecution(
                 () => ExecuteCreateKeyspaceAndTables(session, config, maxTagId),
@@ -212,7 +212,7 @@ VALUES(?, ?, true)
                 );
         }
 
-        private Task Create(ISession session, CassandraJournalSettings config, int maxTagId)
+        private Task Create(ISession session, CassandraJournalConfig config, int maxTagId)
         {
             var keyspace = config.KeyspaceAutocreate
                 ? (Task) session.ExecuteAsync(new SimpleStatement(CreateKeyspace))
@@ -234,8 +234,7 @@ VALUES(?, ?, true)
                 return createTagStatements.Aggregate(tables, (task, statement) =>
                 {
                     return task
-                        .ContinueWith(t => session.ExecuteAsync(new SimpleStatement(statement)),
-                            TaskContinuationOptions.OnlyOnRanToCompletion)
+                        .OnRanToCompletion(() => session.ExecuteAsync(new SimpleStatement(statement)))
                         .Unwrap();
                 });
             }
@@ -245,25 +244,22 @@ VALUES(?, ?, true)
         public Task<ImmutableDictionary<string, string>> InitializePersistentConfig(ISession session)
         {
             return session.ExecuteAsync(new SimpleStatement(SelectConfig))
-                .ContinueWith(rs =>
+                .OnRanToCompletion(rs =>
                 {
-                    var properties = rs.Result.ToList()
+                    var properties = rs.ToList()
                         .ToImmutableDictionary(row => row.GetValue<string>("property"),
                             row => row.GetValue<string>("value"));
                     string oldValue;
-                    if (properties.TryGetValue(CassandraJournalSettings.TargetPartitionProperty, out oldValue))
+                    if (properties.TryGetValue(CassandraJournalConfig.TargetPartitionProperty, out oldValue))
                     {
                         AssertCorrectPartitionSize(oldValue);
                         return Task.FromResult(properties);
                     }
                     return session.ExecuteAsync(new SimpleStatement(WriteConfig,
-                        CassandraJournalSettings.TargetPartitionProperty, _config.TargetPartitionSize.ToString()))
-                        .ContinueWith(
-                            _ =>
-                                properties.SetItem(CassandraJournalSettings.TargetPartitionProperty,
-                                    _config.TargetPartitionSize.ToString()),
-                            TaskContinuationOptions.OnlyOnRanToCompletion);
-                }, TaskContinuationOptions.OnlyOnRanToCompletion)
+                        CassandraJournalConfig.TargetPartitionProperty, _config.TargetPartitionSize.ToString()))
+                        .OnRanToCompletion(_ => properties.SetItem(CassandraJournalConfig.TargetPartitionProperty,
+                                    _config.TargetPartitionSize.ToString()));
+                })
                 .Unwrap();
         }
 

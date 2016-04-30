@@ -70,7 +70,7 @@ namespace Akka.Persistence.Cassandra.Query
             boundStatement.SetPageSize(Config.FetchSize);
 
             return Session.Session.ExecuteAsync(boundStatement)
-                .ContinueWith<IAction>(t => new Finished(t.Result), TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(rs => (IAction) new Finished(rs));
         }
     }
 

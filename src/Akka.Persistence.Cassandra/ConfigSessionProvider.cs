@@ -71,16 +71,16 @@ namespace Akka.Persistence.Cassandra
             var clusterId = _config.GetString("cluster-id");
 
             return ClusterBuilder(clusterId)
-                .ContinueWith(t => t.Result.Build().Connect(), TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(b => b.Build().Connect());
         }
 
         private Task<Builder> ClusterBuilder(string clusterId)
         {
             return LookupContactPoints(clusterId)
-                .ContinueWith(t =>
+                .OnRanToCompletion(i =>
                 {
                     var builder = new Builder()
-                        .AddContactPoints(t.Result)
+                        .AddContactPoints(i)
                         .WithPoolingOptions(PoolingOptions)
                         .WithQueryOptions(new QueryOptions().SetPageSize(PageSize));
                     if (ProtocolVersion.HasValue)
@@ -100,7 +100,7 @@ namespace Akka.Persistence.Cassandra
                         builder.WithSSL();
 
                     return builder;
-                }, TaskContinuationOptions.NotOnRanToCompletion);
+                });
         }
 
         protected virtual Task<IPEndPoint[]> LookupContactPoints(string clusterId)

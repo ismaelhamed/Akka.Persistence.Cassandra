@@ -11,7 +11,7 @@ namespace Akka.Persistence.Cassandra.Journal
     /// <summary>
     /// Settings for the Cassandra journal implementation, parsed from HOCON configuration.
     /// </summary>
-    public class CassandraJournalSettings : CassandraSettings
+    public class CassandraJournalConfig : CassandraPluginConfig
     {
         public const string TargetPartitionProperty = "target-partition-size";
 
@@ -48,7 +48,7 @@ namespace Akka.Persistence.Cassandra.Journal
         /// <summary>
         /// Maximum size of result set during replay
         /// </summary>
-        public int MaxResultSizeReplay { get; private set; }
+        public int ReplayMaxResultSize { get; private set; }
 
         public int MaxTagsPerEvent => 3;
 
@@ -57,6 +57,8 @@ namespace Akka.Persistence.Cassandra.Journal
         public bool EnableEventsByTagQuery { get; }
 
         public string EventsByTagView { get; }
+
+        public string QueryPlugin { get; }
 
         public TimeSpan? PubsubMinimumInterval { get; }
 
@@ -67,7 +69,7 @@ namespace Akka.Persistence.Cassandra.Journal
         /// </summary>
         public int MaxTagId { get; }
 
-        public CassandraJournalSettings(ActorSystem system, Config config)
+        public CassandraJournalConfig(ActorSystem system, Config config)
             : base(system, config)
         {
             TargetPartitionSize = config.GetInt(TargetPartitionProperty);
@@ -77,7 +79,7 @@ namespace Akka.Persistence.Cassandra.Journal
             GcGraceSeconds = config.GetLong("gc-grace-seconds");
             Cassandra2XCompat = config.GetBoolean("cassandra-2x-compat");
             MaxMessageBatchSize = config.GetInt("max-message-batch-size");
-            MaxResultSizeReplay = config.GetInt("max-result-size-replay");
+            ReplayMaxResultSize = config.GetInt("max-result-size-replay");
             var tags = new Dictionary<string, int>();
             foreach (var entry in config.GetConfig("tags").AsEnumerable())
             {
@@ -94,6 +96,7 @@ namespace Akka.Persistence.Cassandra.Journal
             PubsubMinimumInterval = GetPubsubMinimumInterval(config);
 
             EnableEventsByTagQuery = !Cassandra2XCompat && config.GetBoolean("enable-events-by-tag-query");
+            QueryPlugin = config.GetString("query-plugin");
 
             MaxTagId = !EnableEventsByTagQuery ? 0 : (Tags.Count == 0 ? 1 : Tags.Values.Max());
         }

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence.Cassandra.Journal;
@@ -94,7 +93,7 @@ namespace Akka.Persistence.Cassandra.Query
             boundStatement.SetPageSize(Settings.FetchSize);
             var init = Session.ExecuteAsync(boundStatement);
             init
-                .ContinueWith(t => new InitResultSet(t.Result), TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(rs => new InitResultSet(rs))
                 .PipeTo(Self);
         }
 
@@ -149,7 +148,7 @@ namespace Akka.Persistence.Cassandra.Query
                     {
                         var more = resultSet.FetchMoreResultsAsync();
                         more
-                            .ContinueWith(_ => Fetched.Instance, TaskContinuationOptions.OnlyOnRanToCompletion)
+                            .OnRanToCompletion(() => Fetched.Instance)
                             .PipeTo(Self);
                         break;
                     }

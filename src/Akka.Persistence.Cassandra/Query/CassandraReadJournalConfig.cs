@@ -7,7 +7,7 @@ namespace Akka.Persistence.Cassandra.Query
 {
     internal class CassandraReadJournalConfig
     {
-        public CassandraReadJournalConfig(Config config, CassandraJournalSettings writePluginConfig)
+        public CassandraReadJournalConfig(Config config, CassandraJournalConfig writePluginConfig)
         {
             RefreshInterval = config.GetTimeSpan("refresh-interval", null, false);
             MaxBufferSize = config.GetInt("max-buffer-size");

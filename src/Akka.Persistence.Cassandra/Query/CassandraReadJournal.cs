@@ -64,7 +64,7 @@ namespace Akka.Persistence.Cassandra.Query
         }
 
         private readonly ILoggingAdapter _log;
-        private readonly CassandraJournalSettings _writePluginConfig;
+        private readonly CassandraJournalConfig _writePluginConfig;
         private readonly CassandraReadJournalConfig _queryPluginConfig;
         private readonly EventAdapters _eventAdapters;
         private readonly CassandraStatements _writeStatements;
@@ -81,7 +81,7 @@ namespace Akka.Persistence.Cassandra.Query
         {
             _log = Logging.GetLogger(system, GetType());
             var writePluginId = config.GetString("write-plugin");
-            _writePluginConfig = new CassandraJournalSettings(system, system.Settings.Config.GetConfig(writePluginId));
+            _writePluginConfig = new CassandraJournalConfig(system, system.Settings.Config.GetConfig(writePluginId));
             _queryPluginConfig = new CassandraReadJournalConfig(config, _writePluginConfig);
             _eventAdapters = system.PersistenceExtension().AdaptersFor(writePluginId);
             _writeStatements = new CassandraStatements(_writePluginConfig);
@@ -104,9 +104,7 @@ namespace Akka.Persistence.Cassandra.Query
             {
                 return Task.WhenAll(_preparedSelectEventsByPersistenceId.Value, _preparedSelectInUse.Value,
                     _preparedSelectDeletedTo.Value)
-                    .ContinueWith(
-                        t => new CombinedEventsByPersistenceIdStatements(t.Result[0], t.Result[1], t.Result[2]),
-                        TaskContinuationOptions.OnlyOnRanToCompletion);
+                    .OnRanToCompletion(ps => new CombinedEventsByPersistenceIdStatements(ps[0], ps[1], ps[2]));
             });
 
             system.RegisterOnTermination(() => _session.Close());
@@ -490,8 +488,7 @@ namespace Akka.Persistence.Cassandra.Query
         {
             return
                 _session.Prepare(statement)
-                    .ContinueWith(t => t.Result.SetConsistencyLevel(_queryPluginConfig.ReadConsistency),
-                        TaskContinuationOptions.OnlyOnRanToCompletion);
+                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_queryPluginConfig.ReadConsistency));
         }
 
         private Source<T, Unit> CreateSource<T, TStatement>(Task<TStatement> preparedStatement,

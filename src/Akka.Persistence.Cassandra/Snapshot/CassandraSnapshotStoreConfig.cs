@@ -6,7 +6,7 @@ namespace Akka.Persistence.Cassandra.Snapshot
     /// <summary>
     /// Settings for the Cassandra snapshot store implementation, parsed from HOCON configuration.
     /// </summary>
-    public class CassandraSnapshotStoreConfig : CassandraSettings
+    public class CassandraSnapshotStoreConfig : CassandraPluginConfig
     {
         /// <summary>
         /// The maximum number of snapshot metadata records to retrieve in a single request when trying to find

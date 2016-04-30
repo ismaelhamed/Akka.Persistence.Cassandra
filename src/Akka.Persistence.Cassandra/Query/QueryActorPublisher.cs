@@ -8,6 +8,7 @@ using Cassandra;
 using Continue = Akka.Persistence.Cassandra.Query.QueryActorPublisher.Continue;
 using FetchedResultSet = Akka.Persistence.Cassandra.Query.QueryActorPublisher.FetchedResultSet;
 using Finished = Akka.Persistence.Cassandra.Query.QueryActorPublisher.Finished;
+using IAction = Akka.Persistence.Cassandra.Query.QueryActorPublisher.IAction;
 using NewResultSet = Akka.Persistence.Cassandra.Query.QueryActorPublisher.NewResultSet;
 
 namespace Akka.Persistence.Cassandra.Query
@@ -144,13 +145,11 @@ namespace Akka.Persistence.Cassandra.Query
         protected override void PreStart()
         {
             InitialState()
-                .ContinueWith(stateTask =>
+                .OnRanToCompletion(state =>
                 {
-                    var state = stateTask.Result;
                     return InitialQuery(state)
-                        .ContinueWith<IInitialAction>(_ =>
+                        .OnRanToCompletion<IAction, IInitialAction>(result =>
                         {
-                            var result = _.Result;
                             if (result is NewResultSet)
                             {
                                 return new InitialNewResultSet(state, ((NewResultSet) result).ResultSet);
@@ -164,8 +163,8 @@ namespace Akka.Persistence.Cassandra.Query
                                 return new InitialFinished(state, ((Finished) result).ResultSet);
                             }
                             throw new ApplicationException("Should never happen");
-                        }, TaskContinuationOptions.OnlyOnRanToCompletion);
-                }, TaskContinuationOptions.OnlyOnRanToCompletion)
+                        });
+                })
                 .Unwrap()
                 .PipeTo(Self);
         }
@@ -272,7 +271,7 @@ namespace Akka.Persistence.Cassandra.Query
             if (ShouldFetchMore(availableWithoutFetching, isFullyFetched, state))
             {
                 resultSet.FetchMoreResultsAsync()
-                    .ContinueWith(t => new FetchedResultSet(resultSet), TaskContinuationOptions.OnlyOnRanToCompletion)
+                    .OnRanToCompletion(() => new FetchedResultSet(resultSet))
                     .PipeTo(Self);
                 return Awaiting(resultSet, state, finished);
             }
@@ -346,9 +345,9 @@ namespace Akka.Persistence.Cassandra.Query
         }
 
         protected abstract Task<TState> InitialState();
-        protected abstract Task<QueryActorPublisher.IAction> InitialQuery(TState initialState);
-        protected abstract Task<QueryActorPublisher.IAction> RequestNext(TState state, RowSet resultSet);
-        protected abstract Task<QueryActorPublisher.IAction> RequestNextFinished(TState state, RowSet resultSet);
+        protected abstract Task<IAction> InitialQuery(TState initialState);
+        protected abstract Task<IAction> RequestNext(TState state, RowSet resultSet);
+        protected abstract Task<IAction> RequestNextFinished(TState state, RowSet resultSet);
         protected abstract Tuple<Option<TMessage>, TState> UpdateState(TState state, Row row);
         protected abstract bool CompletionCondition(TState state);
     }

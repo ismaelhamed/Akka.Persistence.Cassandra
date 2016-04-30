@@ -24,30 +24,50 @@ namespace Akka.Persistence.Cassandra
     /// <summary>
     /// Abstract class for parsing common settings used by both the Journal and Snapshot store from HOCON configuration.
     /// </summary>
-    public abstract class CassandraSettings
+    public abstract class CassandraPluginConfig
     {
-        private static readonly Regex KeyspaceNameRegex = new Regex("^(\"[a-zA-Z]{1}[\\w]{0,47}\"|[a-zA-Z]{1}[\\w]{0,47})$");
-        /// <summary>
-        /// The name (key) of the session to use when resolving an ISession instance. When using default session management,
-        /// this points at configuration under the "cassandra-sessions" section where the session's configuration is found.
-        /// </summary>
-        public string SessionKey { get; private set; }
+        private static readonly Regex KeyspaceAndTableNameRegex =
+            new Regex("^(\"[a-zA-Z]{1}[\\w]{0,31}\"|[a-zA-Z]{1}[\\w]{0,31})$");
+
+        protected CassandraPluginConfig(ActorSystem system, Config config)
+        {
+            Keyspace = ValidateKeyspaceName(config.GetString("keyspace"));
+            Table = ValidateTableName(config.GetString("table"));
+            MetadataTable = ValidateTableName(config.GetString("metadata-table"));
+            ConfigTable = ValidateTableName(config.GetString("config-table"));
+
+            TableCompactionStrategy = CassandraCompactionStrategy.Create(config.GetConfig("table-compaction-strategy"));
+
+            KeyspaceAutocreate = config.GetBoolean("keyspace-autocreate");
+            TablesAutocreate = config.GetBoolean("tables-autocreate");
+
+            ConnectionRetries = config.GetInt("connect-retries");
+            ConnectionRetryDelay = config.GetTimeSpan("connect-retry-delay");
+
+            ReplicationStrategy = GetReplicationStrategy(config.GetString("replication-strategy"),
+                config.GetInt("replication-factor"), config.GetStringList("data-center-replication-factors"));
+
+            ReadConsistency =
+                (ConsistencyLevel) Enum.Parse(typeof(ConsistencyLevel), config.GetString("read-consistency"), true);
+            WriteConsistency =
+                (ConsistencyLevel) Enum.Parse(typeof(ConsistencyLevel), config.GetString("write-consistency"), true);
+
+            BlockingDispatcherId = config.GetString("blocking-dispatcher");
+
+            // Quote keyspace and table if necessary
+            if (config.GetBoolean("use-quoted-identifiers"))
+            {
+                Keyspace = $"\"{Keyspace}\"";
+                Table = $"\"{Keyspace}\"";
+            }
+
+            SessionProvider = GetSessionProvider(system, config);
+        }
 
         /// <summary>
         /// The keyspace to be created/used.
         /// </summary>
         public string Keyspace { get; }
-
-        /// <summary>
-        /// A string to be appended to the CREATE KEYSPACE statement after the WITH clause when the keyspace is 
-        /// automatically created. Use this to define options like replication strategy.
-        /// </summary>
-        public string KeyspaceCreationOptions { get; private set; }
-
-        /// <summary>
-        /// When true the plugin will automatically try to create the keyspace if it doesn't already exist on start.
-        /// </summary>
-        public bool KeyspaceAutocreate { get; private set; }
 
         /// <summary>
         /// Name of the table to be created/used.
@@ -64,13 +84,12 @@ namespace Akka.Persistence.Cassandra
         /// </summary>
         public string MetadataTable { get; private set; }
 
-        /// <summary>
-        /// A string to be appended to the CREATE TABLE statement after the WITH clause. Use this to define things
-        /// like gc_grace_seconds or one of the many other table options.
-        /// </summary>
-        public string TableCreationProperties { get; private set; }
-
         public ICassandraCompactionStrategy TableCompactionStrategy { get; private set; }
+
+        /// <summary>
+        /// When true the plugin will automatically try to create the keyspace if it doesn't already exist on start.
+        /// </summary>
+        public bool KeyspaceAutocreate { get; private set; }
 
         /// <summary>
         /// When true the plugin will automatically try to create the tables if it doesn't already exist on start.
@@ -100,45 +119,8 @@ namespace Akka.Persistence.Cassandra
         // TODO FIXME temporary until we have fixed all blocking
         public TimeSpan BlockingTimeout { get; } = TimeSpan.FromSeconds(10);
 
-        protected CassandraSettings(ActorSystem system, Config config)
-        {
-            SessionKey = config.GetString("session-key");
-
-            Keyspace = config.GetString("keyspace");
-            KeyspaceCreationOptions = config.GetString("keyspace-creation-options");
-            TableCompactionStrategy = CassandraCompactionStrategy.Create(config.GetConfig("table-compaction-strategy"));
-            KeyspaceAutocreate = config.GetBoolean("keyspace-autocreate");
-
-            Table = config.GetString("table");
-            TableCreationProperties = config.GetString("table-creation-properties");
-            ConfigTable = config.GetString("config-table");
-            MetadataTable = config.GetString("metadata-table");
-            TablesAutocreate = config.GetBoolean("tables-autocreate");
-            ConfigTable = ValidateTableName(config.GetString("config-table"));
-            MetadataTable = config.GetString("metadata-table");
-
-            // Quote keyspace and table if necessary
-            if (config.GetBoolean("use-quoted-identifiers"))
-            {
-                Keyspace = $"\"{Keyspace}\"";
-                Table = $"\"{Keyspace}\"";
-            }
-
-            ConnectionRetries = config.GetInt("connect-retries");
-            ConnectionRetryDelay = config.GetTimeSpan("connect-retry-delay");
-
-            ReplicationStrategy = GetReplicationStrategy(config.GetString("replication-strategy"),
-                config.GetInt("replication-factor"), config.GetStringList("data-center-replication-factors"));
-
-            ReadConsistency = (ConsistencyLevel) Enum.Parse(typeof(ConsistencyLevel), config.GetString("read-consistency"), true);
-            WriteConsistency = (ConsistencyLevel) Enum.Parse(typeof(ConsistencyLevel), config.GetString("write-consistency"), true);
-
-            BlockingDispatcherId = config.GetString("blocking-dispatcher");
-
-            SessionProvider = GetSessionProvider(system, config);
-        }
-
-        private string GetReplicationStrategy(string strategy, int replicationFactor, ICollection<string> dataCenterReplicationFactors)
+        private static string GetReplicationStrategy(string strategy, int replicationFactor,
+            ICollection<string> dataCenterReplicationFactors)
         {
             switch (strategy.ToLowerInvariant())
             {
@@ -148,14 +130,16 @@ namespace Akka.Persistence.Cassandra
                     return
                         $"'NetworkTopologyStrategy',{GetDataCenterReplicationFactorList(dataCenterReplicationFactors)}";
                 default:
-                    throw new ArgumentException($"{strategy} as replication strategy is unknown and not supported.", nameof(strategy));
+                    throw new ArgumentException($"{strategy} as replication strategy is unknown and not supported.",
+                        nameof(strategy));
             }
         }
 
         private static string GetDataCenterReplicationFactorList(ICollection<string> dataCenterReplicationFactors)
         {
             if (dataCenterReplicationFactors == null || dataCenterReplicationFactors.Count == 0)
-                throw new ArgumentException("data-center-replication-factors cannot be empty when using NetworkTopologyStrategy");
+                throw new ArgumentException(
+                    "data-center-replication-factors cannot be empty when using NetworkTopologyStrategy");
             var result = dataCenterReplicationFactors.Select(dataCenterReplicationFactor =>
             {
                 var parts = dataCenterReplicationFactor.Split(':');
@@ -167,7 +151,7 @@ namespace Akka.Persistence.Cassandra
             return string.Join(",", result);
         }
 
-        private ISessionProvider GetSessionProvider(ActorSystem system, Config config)
+        private static ISessionProvider GetSessionProvider(ActorSystem system, Config config)
         {
             var typeName = config.GetString("session-provider");
             var type = Type.GetType(typeName, true);
@@ -199,17 +183,31 @@ namespace Akka.Persistence.Cassandra
         }
 
         /// <summary>
+        /// Validates that the supplied keyspace name is valid based Cassandra's keyspace name requirements.
+        /// See http://docs.datastax.com/en/cql/3.0/cql/cql_reference/create_keyspace_r.html.
+        /// </summary>
+        /// <param name="keyspaceName">the keyspace name to validate</param>
+        /// <returns>table name if valid, throws ArgumentException otherwise</returns>
+        internal static string ValidateKeyspaceName(string keyspaceName)
+        {
+            if (KeyspaceAndTableNameRegex.IsMatch(keyspaceName))
+                return keyspaceName;
+            throw new ArgumentException(
+                $"Invalid keyspace name. A keyspace name may contain 32 or fewer alphanumeric charachters and underscores. Value was: {keyspaceName}");
+        }
+
+        /// <summary>
         /// Validates that the supplied table name meets Cassandra's table name requirements.
-        /// According to docs here: https://cassandra.apache.org/doc/cql3/CQL.html#createTableStmt.
+        /// See https://cassandra.apache.org/doc/cql3/CQL.html#createTableStmt.
         /// </summary>
         /// <param name="tableName">the table name to validate</param>
         /// <returns>table name if valid, throws ArgumentException otherwise</returns>
-        public string ValidateTableName(string tableName)
+        internal static string ValidateTableName(string tableName)
         {
-            if (KeyspaceNameRegex.IsMatch(tableName))
+            if (KeyspaceAndTableNameRegex.IsMatch(tableName))
                 return tableName;
             throw new ArgumentException(
-                $"Invalid table name. A table name may contain 48 or fewer alphanumeric charachters and underscores. Value was: {tableName}");
+                $"Invalid table name. A table name may contain 32 or fewer alphanumeric charachters and underscores. Value was: {tableName}");
         }
     }
 }

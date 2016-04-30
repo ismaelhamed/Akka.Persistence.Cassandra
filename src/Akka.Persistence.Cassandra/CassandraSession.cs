@@ -11,14 +11,14 @@ namespace Akka.Persistence.Cassandra
     internal sealed class CassandraSession
     {
         private readonly ActorSystem _system;
-        private readonly CassandraSettings _settings;
+        private readonly CassandraPluginConfig _settings;
         private readonly ILoggingAdapter _log;
         private readonly string _metricsCategory;
         private readonly Func<ISession, Task> _init;
 
         private readonly AtomicReference<Task<ISession>> _underlyingSession = new AtomicReference<Task<ISession>>();
 
-        public CassandraSession(ActorSystem system, CassandraSettings settings,
+        public CassandraSession(ActorSystem system, CassandraPluginConfig settings,
             ILoggingAdapter log, string metricsCategory, Func<ISession, Task> init)
         {
             _system = system;
@@ -49,8 +49,7 @@ namespace Akka.Persistence.Cassandra
         public Task<PreparedStatement> Prepare(string statement)
         {
             return
-                Underlying.ContinueWith(t => t.Result.PrepareAsync(statement),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                Underlying.OnRanToCompletion(s => s.PrepareAsync(statement))
                     .Unwrap();
         }
 
@@ -59,8 +58,7 @@ namespace Akka.Persistence.Cassandra
             if (!statement.ConsistencyLevel.HasValue)
                 statement.SetConsistencyLevel(_settings.WriteConsistency);
             return
-                Underlying.ContinueWith(t => t.Result.ExecuteAsync(statement),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                Underlying.OnRanToCompletion(s => s.ExecuteAsync(statement))
                     .Unwrap();
         }
 
@@ -69,15 +67,14 @@ namespace Akka.Persistence.Cassandra
             if (!statement.ConsistencyLevel.HasValue)
                 statement.SetConsistencyLevel(_settings.ReadConsistency);
             return
-                Underlying.ContinueWith(t => t.Result.ExecuteAsync(statement),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                Underlying.OnRanToCompletion(s => s.ExecuteAsync(statement))
                     .Unwrap();
         }
 
         public void Close()
         {
             var existing = _underlyingSession.GetAndSet(null);
-            existing?.ContinueWith(t => t.Result.Dispose(), TaskContinuationOptions.OnlyOnRanToCompletion);
+            existing?.OnRanToCompletion(s => s.Dispose());
         }
 
         private Task<ISession> Setup()
@@ -85,29 +82,29 @@ namespace Akka.Persistence.Cassandra
             var existing = _underlyingSession.Value;
             while (existing == null)
             {
-                var s = Initialize(_settings.SessionProvider.Connect());
-                if (_underlyingSession.CompareAndSet(null, s))
+                var session = Initialize(_settings.SessionProvider.Connect());
+                if (_underlyingSession.CompareAndSet(null, session))
                 {
                     // TODO metrics
                     //s.foreach { ses =>
                     //  CassandraMetricsRegistry(system).addMetrics(metricsCategory, ses.getCluster.getMetrics.getRegistry)
                     //}
 
-                    s.ContinueWith(t =>
+                    session.OnFaultedOrCanceled(t =>
                     {
-                        _underlyingSession.CompareAndSet(s, null);
+                        _underlyingSession.CompareAndSet(session, null);
                         _log.Warning(
                             $"Failed to connect to Cassandra and initialize. It will be retried on demand. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "task cancellation")}");
-                    }, TaskContinuationOptions.NotOnRanToCompletion);
+                    });
                     _system.RegisterOnTermination(() =>
                     {
-                        s.ContinueWith(t => t.Result.Dispose(), TaskContinuationOptions.OnlyOnRanToCompletion);
+                        session.OnRanToCompletion(s => s.Dispose());
                     });
-                    existing = s;
+                    existing = session;
                 }
                 else
                 {
-                    s.ContinueWith(t => t.Result.Dispose(), TaskContinuationOptions.OnlyOnRanToCompletion);
+                    session.OnRanToCompletion(s => s.Dispose());
                     existing = _underlyingSession.Value;
                 }
             }
@@ -116,15 +113,14 @@ namespace Akka.Persistence.Cassandra
 
         private Task<ISession> Initialize(Task<ISession> session)
         {
-            return session.ContinueWith(t =>
+            return session.OnRanToCompletion(s =>
             {
-                var s = t.Result;
-                var result = _init(t.Result);
+                var result = _init(s);
 
                 return result
-                    .ContinueWith(_ => Close(s), TaskContinuationOptions.NotOnRanToCompletion)
-                    .ContinueWith(_ => s, TaskContinuationOptions.OnlyOnRanToCompletion);
-            }, TaskContinuationOptions.OnlyOnRanToCompletion)
+                    .OnFaultedOrCanceled(_ => Close(s))
+                    .OnRanToCompletion(() => s);
+            })
                 .Unwrap();
         }
 
@@ -178,19 +174,19 @@ namespace Akka.Persistence.Cassandra
             // TODO CassandraMetricsRegistry(system).RemoveMetrics(_metricsCategory);
         }
 
-        private static readonly AtomicReference<Task> serializedExecutionProgress =
+        private static readonly AtomicReference<Task> SerializedExecutionProgress =
             new AtomicReference<Task>(Task.FromResult(new object()));
 
         internal static Task SerializedExecution(Func<Task> recur, Func<Task> exec)
         {
-            var progress = serializedExecutionProgress.Value;
+            var progress = SerializedExecutionProgress.Value;
             var promise = new TaskCompletionSource<object>();
-            progress.ContinueWith(t =>
+            progress.OnRanToCompletion(() =>
             {
-                var result = serializedExecutionProgress.CompareAndSet(progress, promise.Task) ? exec() : recur();
+                var result = SerializedExecutionProgress.CompareAndSet(progress, promise.Task) ? exec() : recur();
                 promise.SetResult(result);
                 return result;
-            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+            });
             return promise.Task;
         }
     }

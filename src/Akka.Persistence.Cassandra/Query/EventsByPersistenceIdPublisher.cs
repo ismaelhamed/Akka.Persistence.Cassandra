@@ -23,7 +23,7 @@ namespace Akka.Persistence.Cassandra.Query
                             refreshInterval, session, config));
         }
 
-        private Akka.Serialization.Serialization _serialization;
+        private readonly Akka.Serialization.Serialization _serialization;
 
         public EventsByPersistenceIdPublisher(string persistenceId, long fromSequenceNr, long toSequenceNr, long max,
             int pageSize, TimeSpan? refreshInterval, EventsByPersistenceIdSession session,
@@ -50,13 +50,13 @@ namespace Akka.Persistence.Cassandra.Query
         {
 
             return HighestDeletedSequenceNumber(PersistenceId)
-                .ContinueWith(delTask =>
+                .OnRanToCompletion(del =>
                 {
-                    var initialFromSequenceNr = Math.Max(delTask.Result + 1, FromSequenceNr);
+                    var initialFromSequenceNr = Math.Max(del + 1, FromSequenceNr);
                     var currentPartitionNumber = PartitionNr(initialFromSequenceNr, Config.TargetPartitionSize) + 1;
 
                     return new EventsByPersistenceIdState(initialFromSequenceNr, 0, currentPartitionNumber);
-                }, TaskContinuationOptions.OnlyOnRanToCompletion);
+                });
         }
 
         protected override Task<IAction> InitialQuery(EventsByPersistenceIdState initialState)
@@ -68,19 +68,18 @@ namespace Akka.Persistence.Cassandra.Query
         protected override Task<IAction> RequestNext(EventsByPersistenceIdState state, RowSet resultSet)
         {
             return InUse(PersistenceId, state.PartitionNr)
-                .ContinueWith(t => t.Result ? Query(state) : Task.FromResult((IAction) new Finished(resultSet)),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(inUse => inUse ? Query(state) : Task.FromResult((IAction) new Finished(resultSet)))
                 .Unwrap();
         }
 
         protected override Task<IAction> RequestNextFinished(EventsByPersistenceIdState state, RowSet resultSet)
         {
             return Query(new EventsByPersistenceIdState(state.Progress, state.Count, state.PartitionNr - 1))
-                .ContinueWith(t =>
+                .OnRanToCompletion(a =>
                 {
-                    var newResultSet = ((NewResultSet) t.Result).ResultSet;
-                    return newResultSet.IsExhausted() ? RequestNext(state, resultSet) : Task.FromResult(t.Result);
-                }, TaskContinuationOptions.OnlyOnRanToCompletion)
+                    var newResultSet = ((NewResultSet) a).ResultSet;
+                    return newResultSet.IsExhausted() ? RequestNext(state, resultSet) : Task.FromResult(a);
+                })
                 .Unwrap();
         }
 
@@ -126,24 +125,18 @@ namespace Akka.Persistence.Cassandra.Query
 
         private Task<bool> InUse(string persistenceId, long currentPartitionNr) =>
             Session.SelectInUse(persistenceId, currentPartitionNr)
-                .ContinueWith(t =>
-                {
-                    var resultSet = t.Result;
-                    return !resultSet.IsExhausted() && resultSet.First().GetValue<bool>("used");
-                }, TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(rs => !rs.IsExhausted() && rs.First().GetValue<bool>("used"));
 
         private Task<long> HighestDeletedSequenceNumber(string partitionKey) =>
             Session.SelectDeletedTo(partitionKey)
-                .ContinueWith(t => t.Result.FirstOrDefault()?.GetValue<long>("deleted_to") ?? 0,
-                    TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(rs => rs.FirstOrDefault()?.GetValue<long>("deleted_to") ?? 0);
 
         private long PartitionNr(long sequenceNr, int targetPartitionSize) =>
             (sequenceNr - 1L)/targetPartitionSize;
 
         private Task<IAction> Query(EventsByPersistenceIdState state) =>
             Session.SelectEventsByPersistenceId(PersistenceId, state.PartitionNr, state.Progress, ToSequenceNr, PageSize)
-                .ContinueWith<IAction>(t => new NewResultSet(t.Result),
-                    TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(rs => (IAction) new NewResultSet(rs));
     }
 
     internal class EventsByPersistenceIdSession

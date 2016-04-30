@@ -48,32 +48,27 @@ namespace Akka.Persistence.Cassandra.Snapshot
                 new Lazy<Task<PreparedStatement>>(
                     () =>
                         _session.Prepare(statements.WriteSnapshot)
-                            .ContinueWith(t => t.Result.SetConsistencyLevel(_config.WriteConsistency),
-                                TaskContinuationOptions.OnlyOnRanToCompletion));
+                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.WriteConsistency)));
             _preparedDeleteSnapshot =
                 new Lazy<Task<PreparedStatement>>(
                     () =>
                         _session.Prepare(statements.DeleteSnapshot)
-                            .ContinueWith(t => t.Result.SetConsistencyLevel(_config.WriteConsistency),
-                                TaskContinuationOptions.OnlyOnRanToCompletion));
+                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.WriteConsistency)));
             _preparedSelectSnapshot =
                 new Lazy<Task<PreparedStatement>>(
                     () =>
                         _session.Prepare(statements.SelectSnapshot)
-                            .ContinueWith(t => t.Result.SetConsistencyLevel(_config.ReadConsistency),
-                                TaskContinuationOptions.OnlyOnRanToCompletion));
+                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
             _preparedSelectSnapshotMetadataForLoad =
                 new Lazy<Task<PreparedStatement>>(
                     () =>
                         _session.Prepare(statements.SelectSnapshotMetadata(_config.MaxMetadataResultSize))
-                            .ContinueWith(t => t.Result.SetConsistencyLevel(_config.ReadConsistency),
-                                TaskContinuationOptions.OnlyOnRanToCompletion));
+                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
             _preparedSelectSnapshotMetadataForDelete =
                 new Lazy<Task<PreparedStatement>>(
                     () =>
                         _session.Prepare(statements.SelectSnapshotMetadata())
-                            .ContinueWith(t => t.Result.SetConsistencyLevel(_config.ReadConsistency),
-                                TaskContinuationOptions.OnlyOnRanToCompletion));
+                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
 
             var address = ((ExtendedActorSystem) Context.System).Provider.DefaultAddress;
             _transportInformation =
@@ -116,10 +111,9 @@ namespace Akka.Persistence.Cassandra.Snapshot
         protected override Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
             return _preparedSelectSnapshotMetadataForLoad.Value
-                .ContinueWith(t => Metadata(t.Result, persistenceId, criteria, 3),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(ps => Metadata(ps, persistenceId, criteria, 3))
                 .Unwrap()
-                .ContinueWith(t => LoadNAsync(t.Result.ToImmutableList()), TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(m => LoadNAsync(m.ToImmutableList()))
                 .Unwrap();
         }
 
@@ -130,30 +124,32 @@ namespace Akka.Persistence.Cassandra.Snapshot
             var md = metadata[0];
 
             return Load1Async(md)
-                .ContinueWith(t => new SelectedSnapshot(md, t.Result.Data),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(s => new SelectedSnapshot(md, s.Data))
                 .ContinueWith(t =>
                 {
-                    _log.Warning(
-                        // ReSharper disable once PossibleNullReferenceException
-                        $"Failed to load snapshot, trying older one. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "Cancelled")}");
-                    return LoadNAsync(metadata.RemoveAt(0));
-                }, TaskContinuationOptions.NotOnRanToCompletion)
+                    if (t.IsFaulted || t.IsCanceled)
+                    {
+                        _log.Warning(
+                            // ReSharper disable once PossibleNullReferenceException
+                            $"Failed to load snapshot, trying older one. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "Cancelled")}");
+                        return LoadNAsync(metadata.RemoveAt(0));
+                    }
+                    return Task.FromResult(t.Result);
+                })
                 .Unwrap();
         }
 
         private Task<Serialization.Snapshot> Load1Async(SnapshotMetadata metadata)
         {
             var boundSelectSnapshot = _preparedSelectSnapshot.Value
-                .ContinueWith(t => t.Result.Bind(metadata.PersistenceId, metadata.SequenceNr),
-                    TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(ps => ps.Bind(metadata.PersistenceId, metadata.SequenceNr));
 
             return boundSelectSnapshot
-                .ContinueWith(t => _session.Select(t.Result), TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(bs => _session.Select(bs))
                 .Unwrap()
-                .ContinueWith(t =>
+                .OnRanToCompletion(rs =>
                 {
-                    var row = t.Result.Single();
+                    var row = rs.Single();
                     var bytes = row.GetValue<byte[]>("snapshot");
                     if (bytes == null)
                     {
@@ -172,9 +168,9 @@ namespace Akka.Persistence.Cassandra.Snapshot
         {
             var serialized = Serialize(snapshot);
             return _preparedWriteSnapshot.Value
-                .ContinueWith(t =>
+                .OnRanToCompletion(ps =>
                 {
-                    var bs = t.Result.Bind(new
+                    var bs = ps.Bind(new
                     {
                         persistence_id = metadata.PersistenceId,
                         sequence_nr = metadata.SequenceNr,
@@ -186,41 +182,34 @@ namespace Akka.Persistence.Cassandra.Snapshot
                         snapshot = (string) null
                     });
                     return _session.ExecuteWrite(bs);
-                }, TaskContinuationOptions.OnlyOnRanToCompletion)
+                })
                 .Unwrap();
         }
 
         protected override Task DeleteAsync(SnapshotMetadata metadata)
         {
             var boundDeleteSnapshot = _preparedDeleteSnapshot.Value
-                .ContinueWith(t => t.Result.Bind(metadata.PersistenceId, metadata.SequenceNr),
-                    TaskContinuationOptions.OnlyOnRanToCompletion);
+                .OnRanToCompletion(ps => ps.Bind(metadata.PersistenceId, metadata.SequenceNr));
             return boundDeleteSnapshot
-                .ContinueWith(t => _session.ExecuteWrite(t.Result), TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(bs => _session.ExecuteWrite(bs))
                 .Unwrap();
         }
 
         protected override Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
             return _preparedSelectSnapshotMetadataForDelete.Value
-                .ContinueWith(preparedStatementTask => Metadata(preparedStatementTask.Result, persistenceId, criteria),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(ps => Metadata(ps, persistenceId, criteria))
                 .Unwrap()
-                .ContinueWith(metadataTask =>
+                .OnRanToCompletion(m =>
                 {
-                    var boundStatements = metadataTask.Result
+                    var boundStatements = m
                         .Select(metadata => _preparedDeleteSnapshot.Value
-                            .ContinueWith(
-                                _ =>
-                                    _.Result.Bind(metadata.PersistenceId, metadata.SequenceNr,
-                                        TaskContinuationOptions.OnlyOnRanToCompletion)
+                            .OnRanToCompletion(_ => _.Bind(metadata.PersistenceId, metadata.SequenceNr)
                             ));
                     return Task.WhenAll(boundStatements);
-                }, TaskContinuationOptions.OnlyOnRanToCompletion)
+                })
                 .Unwrap()
-                .ContinueWith(
-                    statementsTask => ExecuteBatch(batch => statementsTask.Result.ForEach(s => batch.Add(s))),
-                    TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(statements => ExecuteBatch(batch => statements.ForEach(s => batch.Add(s))))
                 .Unwrap();
         }
 
@@ -229,7 +218,7 @@ namespace Akka.Persistence.Cassandra.Snapshot
             var batch = (BatchStatement) new BatchStatement().SetConsistencyLevel(_config.WriteConsistency);
             body(batch);
             return _session.Underlying
-                .ContinueWith(_ => _.Result.ExecuteAsync(batch), TaskContinuationOptions.OnlyOnRanToCompletion)
+                .OnRanToCompletion(_ => _.ExecuteAsync(batch))
                 .Unwrap();
         }
 

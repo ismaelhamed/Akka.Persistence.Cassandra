@@ -1,7 +1,6 @@
 ﻿using System;
 using Akka.Actor;
 using Akka.Persistence.Cassandra.Journal;
-using Akka.Persistence.Cassandra.SessionManagement;
 using Akka.Persistence.Cassandra.Snapshot;
 
 namespace Akka.Persistence.Cassandra
@@ -14,17 +13,12 @@ namespace Akka.Persistence.Cassandra
         /// <summary>
         /// The settings for the Cassandra journal.
         /// </summary>
-        public CassandraJournalSettings JournalSettings { get; private set; }
+        public CassandraJournalConfig JournalConfig { get; private set; }
 
         /// <summary>
         /// The settings for the Cassandra snapshot store.
         /// </summary>
         public CassandraSnapshotStoreConfig SnapshotStoreConfig { get; private set; }
-
-        /// <summary>
-        /// The session manager for resolving session instances.
-        /// </summary>
-        public IManageSessions SessionManager { get; private set; }
         
         public CassandraExtension(ExtendedActorSystem system)
         {
@@ -38,7 +32,7 @@ namespace Akka.Persistence.Cassandra
             
             // Read config
             var journalConfig = system.Settings.Config.GetConfig("cassandra-journal");
-            JournalSettings = new CassandraJournalSettings(system, journalConfig);
+            JournalConfig = new CassandraJournalConfig(system, journalConfig);
 
             var snapshotConfig = system.Settings.Config.GetConfig("cassandra-snapshot-store");
             SnapshotStoreConfig = new CassandraSnapshotStoreConfig(system, snapshotConfig);
