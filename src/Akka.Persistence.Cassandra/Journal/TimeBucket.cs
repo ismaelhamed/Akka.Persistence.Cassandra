@@ -1,7 +1,7 @@
 ﻿using System;
 using Cassandra;
 
-namespace Akka.Persistence.Cassandra
+namespace Akka.Persistence.Cassandra.Journal
 {
     public class TimeBucket
     {

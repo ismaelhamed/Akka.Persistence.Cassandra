@@ -26,9 +26,6 @@ namespace Akka.Persistence.Cassandra
             
             // Initialize fallback configuration defaults
             system.Settings.InjectTopLevelFallback(CassandraPersistence.DefaultConfig());
-
-            // Get or add the session manager
-            //SessionManager = CassandraSession.Instance.Apply(system);
             
             // Read config
             var journalConfig = system.Settings.Config.GetConfig("cassandra-journal");

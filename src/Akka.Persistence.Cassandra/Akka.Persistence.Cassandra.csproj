@@ -145,7 +145,6 @@
     <Compile Include="Journal\CassandraJournalConfig.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Journal\JournalStatements.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Snapshot\CassandraSnapshotStore.cs">
       <SubType>Code</SubType>
@@ -154,7 +153,7 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Snapshot\CassandraStatements.cs" />
-    <Compile Include="TimeBucket.cs" />
+    <Compile Include="Journal\TimeBucket.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Akka.Persistence.Cassandra.nuspec" />

@@ -9,18 +9,6 @@ using Cassandra;
 
 namespace Akka.Persistence.Cassandra
 {
-    public class StorePathPasswordConfig
-    {
-        public StorePathPasswordConfig(string path, string password)
-        {
-            Path = path;
-            Password = password;
-        }
-
-        public string Path { get; }
-        public string Password { get; }
-    }
-
     /// <summary>
     /// Abstract class for parsing common settings used by both the Journal and Snapshot store from HOCON configuration.
     /// </summary>
@@ -72,34 +60,46 @@ namespace Akka.Persistence.Cassandra
         /// <summary>
         /// Name of the table to be created/used.
         /// </summary>
-        public string Table { get; private set; }
-
-        /// <summary>
-        /// Name of the table to be created/used for journal config.
-        /// </summary>
-        public string ConfigTable { get; private set; }
+        public string Table { get; }
 
         /// <summary>
         /// Name of the table to be created/used for storing metadata.
         /// </summary>
-        public string MetadataTable { get; private set; }
+        public string MetadataTable { get; }
 
-        public ICassandraCompactionStrategy TableCompactionStrategy { get; private set; }
+        /// <summary>
+        /// Name of the table to be created/used for journal config.
+        /// </summary>
+        public string ConfigTable { get; }
+
+        /// <summary>
+        /// Compaction strategy for journal/snapshot tables
+        /// </summary>
+        public ICassandraCompactionStrategy TableCompactionStrategy { get; }
 
         /// <summary>
         /// When true the plugin will automatically try to create the keyspace if it doesn't already exist on start.
         /// </summary>
-        public bool KeyspaceAutocreate { get; private set; }
+        public bool KeyspaceAutocreate { get; }
 
         /// <summary>
         /// When true the plugin will automatically try to create the tables if it doesn't already exist on start.
         /// </summary>
-        public bool TablesAutocreate { get; private set; }
+        public bool TablesAutocreate { get; }
 
+        /// <summary>
+        /// Number of retries before giving up connecting to the cluster
+        /// </summary>
         public int ConnectionRetries { get; private set; }
 
+        /// <summary>
+        /// Delay between connection retries
+        /// </summary>
         public TimeSpan ConnectionRetryDelay { get; private set; }
 
+        /// <summary>
+        // Replication strategy to use. SimpleStrategy or NetworkTopologyStrategy
+        /// </summary>
         public string ReplicationStrategy { get; private set; }
 
         /// <summary>
@@ -112,12 +112,15 @@ namespace Akka.Persistence.Cassandra
         /// </summary>
         public ConsistencyLevel WriteConsistency { get; private set; }
 
+        /// <summary>
+        /// Dispatcher for potentially blocking tasks.
+        /// </summary>
         public string BlockingDispatcherId { get; private set; }
 
         public ISessionProvider SessionProvider { get; private set; }
 
         // TODO FIXME temporary until we have fixed all blocking
-        public TimeSpan BlockingTimeout { get; } = TimeSpan.FromSeconds(10);
+        internal TimeSpan BlockingTimeout { get; } = TimeSpan.FromSeconds(10);
 
         private static string GetReplicationStrategy(string strategy, int replicationFactor,
             ICollection<string> dataCenterReplicationFactors)

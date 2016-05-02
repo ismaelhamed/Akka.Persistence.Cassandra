@@ -7,6 +7,7 @@ using Akka.Actor;
 using Akka.Cluster.Tools.PublishSubscribe;
 using Akka.Event;
 using Akka.Pattern;
+using Akka.Persistence.Cassandra.Journal;
 using Akka.Streams.Actors;
 using Akka.Streams.Util;
 using Akka.Util.Internal;
