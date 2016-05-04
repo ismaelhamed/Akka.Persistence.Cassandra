@@ -34,7 +34,7 @@ namespace Akka.Persistence.Cassandra
         {
             System = system;
             _config = config;
-            PageSize = config.GetInt("page-size");
+            FetchSize = config.GetInt("max-result-size");
             var protocolVersion = config.GetString("protocol-version");
             ProtocolVersion = string.IsNullOrEmpty(protocolVersion) ? null : (byte?)config.GetInt("protocol-version");
             var connectionPoolConfig = config.GetConfig("connection-pool");
@@ -60,47 +60,45 @@ namespace Akka.Persistence.Cassandra
 
         protected ActorSystem System { get; }
 
-        public int PageSize { get; }
+        public int FetchSize { get; }
 
         public byte? ProtocolVersion { get; }
 
         public PoolingOptions PoolingOptions { get; }
 
-        public Task<ISession> Connect()
+        public async Task<ISession> Connect()
         {
             var clusterId = _config.GetString("cluster-id");
 
-            return ClusterBuilder(clusterId)
-                .OnRanToCompletion(b => b.Build().Connect());
+            var builder = await ClusterBuilder(clusterId);
+            return builder.Build().Connect();
         }
 
-        private Task<Builder> ClusterBuilder(string clusterId)
+        private async Task<Builder> ClusterBuilder(string clusterId)
         {
-            return LookupContactPoints(clusterId)
-                .OnRanToCompletion(i =>
-                {
-                    var builder = new Builder()
-                        .AddContactPoints(i)
-                        .WithPoolingOptions(PoolingOptions)
-                        .WithQueryOptions(new QueryOptions().SetPageSize(PageSize));
-                    if (ProtocolVersion.HasValue)
-                        builder.WithMaxProtocolVersion(ProtocolVersion.Value);
+            var contactPoints = await LookupContactPoints(clusterId);
 
-                    var username = _config.GetString("authentication.username");
-                    if (!string.IsNullOrEmpty(username))
-                        builder.WithCredentials(username, _config.GetString("authentication.password"));
+            var builder = new Builder()
+                .AddContactPoints(contactPoints)
+                .WithPoolingOptions(PoolingOptions)
+                .WithQueryOptions(new QueryOptions().SetPageSize(FetchSize));
+            if (ProtocolVersion.HasValue)
+                builder.WithMaxProtocolVersion(ProtocolVersion.Value);
 
-                    var localDatacenter = _config.GetString("local-datacenter");
-                    if (!string.IsNullOrEmpty(localDatacenter))
-                        builder.WithLoadBalancingPolicy(
-                            new TokenAwarePolicy(new DCAwareRoundRobinPolicy(localDatacenter)));
+            var username = _config.GetString("authentication.username");
+            if (!string.IsNullOrEmpty(username))
+                builder.WithCredentials(username, _config.GetString("authentication.password"));
 
-                    // TODO Aditional ssl settings
-                    if (_config.GetBoolean("ssl"))
-                        builder.WithSSL();
+            var localDatacenter = _config.GetString("local-datacenter");
+            if (!string.IsNullOrEmpty(localDatacenter))
+                builder.WithLoadBalancingPolicy(
+                    new TokenAwarePolicy(new DCAwareRoundRobinPolicy(localDatacenter)));
 
-                    return builder;
-                });
+            // TODO Aditional ssl settings
+            if (_config.GetBoolean("ssl"))
+                builder.WithSSL();
+
+            return builder;
         }
 
         protected virtual Task<IPEndPoint[]> LookupContactPoints(string clusterId)

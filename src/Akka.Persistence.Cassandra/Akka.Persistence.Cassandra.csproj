@@ -126,6 +126,7 @@
     <Compile Include="Query\AllPersistenceIdsPublisher.cs" />
     <Compile Include="Query\CassandraReadJournal.cs" />
     <Compile Include="Query\CassandraReadJournalConfig.cs" />
+    <Compile Include="Query\CassandraReadJournalProvider.cs" />
     <Compile Include="Query\CassandraReadStatements.cs" />
     <Compile Include="Query\EventsByPersistenceIdPublisher.cs" />
     <Compile Include="Query\EventsByTagFetcher.cs" />

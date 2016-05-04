@@ -157,7 +157,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// because order is not defined and new 'persistenceId's may appear anywhere in the query results.
         /// </para>
         /// </summary>
-        public Source<string, Unit> AllPersistenceIds => PersistenceIds(_queryPluginConfig.RefreshInterval, "allPersistenceIds");
+        public Source<string, Unit> AllPersistenceIds() => PersistenceIds(_queryPluginConfig.RefreshInterval, "allPersistenceIds");
 
 
         /// <summary>
@@ -165,7 +165,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// is completed immediately when it reaches the end of the "result set". Events that are
         /// stored after the query is completed are not included in the event stream.
         /// </summary>
-        public Source<string, Unit> CurrentPersistenceIds => PersistenceIds(null, "currentPersistenceIds");
+        public Source<string, Unit> CurrentPersistenceIds() => PersistenceIds(null, "currentPersistenceIds");
 
         /// <summary>
         /// <para>

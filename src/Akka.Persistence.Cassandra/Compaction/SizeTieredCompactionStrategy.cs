@@ -16,34 +16,40 @@ namespace Akka.Persistence.Cassandra.Compaction
                 throw new ArgumentException(
                     $"Config contains properties not supported by a {SizeTieredCompactionStrategyConfig.Instance.TypeName}");
 
-            var bucketHigh = config.GetDouble("bucket_high", 1.5);
-            var bucketLow = config.GetDouble("bucket_low", 0.5);
-            var maxThreshold = config.GetInt("max_threshold", 32);
-            var minThreshold = config.GetInt("min_threshold", 4);
-            // ReSharper disable once InconsistentNaming
-            var minSSTableSize = config.GetLong("min_sstable_size", 50);
+            BucketHigh = config.GetDouble("bucket_high", 1.5);
+            BucketLow = config.GetDouble("bucket_low", 0.5);
+            MaxThreshold = config.GetInt("max_threshold", 32);
+            MinThreshold = config.GetInt("min_threshold", 4);
+            MinSSTableSize = config.GetLong("min_sstable_size", 50);
 
-            if (bucketHigh <= bucketLow)
-                throw new ArgumentException($"bucket_high must be greater than bucket_low, but was {bucketHigh}");
-            if (maxThreshold <= 0)
-                throw new ArgumentException($"max_threshold must be greater than 0, but was {maxThreshold}");
-            if (minThreshold <= 1)
-                throw new ArgumentException($"min_threshold must be greater than 1, but was {minThreshold}");
-            if (minThreshold >= maxThreshold)
-                throw new ArgumentException($"max_threshold must be larger than min_threshold, but was {maxThreshold}");
-            if (minSSTableSize <= 0)
-                throw new ArgumentException($"min_sstable_size must be greater than 0, but was {minSSTableSize}");
+            if (BucketHigh <= BucketLow)
+                throw new ArgumentException($"bucket_high must be greater than bucket_low, but was {BucketHigh}");
+            if (MaxThreshold <= 0)
+                throw new ArgumentException($"max_threshold must be greater than 0, but was {MaxThreshold}");
+            if (MinThreshold <= 1)
+                throw new ArgumentException($"min_threshold must be greater than 1, but was {MinThreshold}");
+            if (MinThreshold >= MaxThreshold)
+                throw new ArgumentException($"max_threshold must be larger than min_threshold, but was {MaxThreshold}");
+            if (MinSSTableSize <= 0)
+                throw new ArgumentException($"min_sstable_size must be greater than 0, but was {MinSSTableSize}");
 
             AsCQL = $@"{{
 'class' : '{SizeTieredCompactionStrategyConfig.Instance.TypeName}',
 {AsCQL},
-'bucket_high' : {bucketHigh},
-'bucket_low' : {bucketLow},
-'max_threshold' : {maxThreshold},
-'min_threshold' : {minThreshold},
-'min_sstable_size' : {minSSTableSize}
+'bucket_high' : {BucketHigh},
+'bucket_low' : {BucketLow},
+'max_threshold' : {MaxThreshold},
+'min_threshold' : {MinThreshold},
+'min_sstable_size' : {MinSSTableSize}
 }}";
         }
+
+        public double BucketHigh { get; }
+        public double BucketLow { get; }
+        public int MaxThreshold { get; }
+        public int MinThreshold { get; }
+        // ReSharper disable once InconsistentNaming
+        public long MinSSTableSize { get; }
     }
 
     public class SizeTieredCompactionStrategyConfig : ICassandraCompactionStrategyConfig<SizeTieredCompactionStrategy>

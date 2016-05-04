@@ -13,7 +13,7 @@ namespace Akka.Persistence.Cassandra.Query
             MaxBufferSize = config.GetInt("max-buffer-size");
             FetchSize = config.GetInt("max-result-size-query");
             ReadConsistency = (ConsistencyLevel) Enum.Parse(typeof(ConsistencyLevel), config.GetString("read-consistency"), true);
-            FirstTimeBucket = new TimeBucket(Guid.Parse(config.GetString("first-time-bucket")));
+            FirstTimeBucket = new TimeBucket(config.GetString("first-time-bucket"));
             EventualConsistencyDelay = config.GetTimeSpan("eventual-consistency-delay", null, false);
             DelayedEventTimeout = config.GetTimeSpan("delayed-event-timeout", null, false);
             PluginDispatcher = config.GetString("plugin-dispatcher");

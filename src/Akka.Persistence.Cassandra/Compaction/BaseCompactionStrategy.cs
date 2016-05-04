@@ -7,24 +7,30 @@ namespace Akka.Persistence.Cassandra.Compaction
     // Based upon https://github.com/apache/cassandra/blob/cassandra-2.2/src/java/org/apache/cassandra/db/compaction/AbstractCompactionStrategy.java
     public abstract class BaseCompactionStrategy : ICassandraCompactionStrategy
     {
+
         protected BaseCompactionStrategy(Config config)
         {
-            var enabled = config.GetBoolean("enabled", true);
-            var tombstoneCompactionInterval = config.GetLong("tombstone_compaction_interval", 86400L);
-            var tombstoneThreshold = config.GetDouble("tombstone_threshold", 0.2);
-            var uncheckedTombstoneCompaction = config.GetBoolean("unchecked_tombstone_compaction");
+            Enabled = config.GetBoolean("enabled", true);
+            TombstoneCompactionInterval = config.GetLong("tombstone_compaction_interval", 86400L);
+            TombstoneThreshold = config.GetDouble("tombstone_threshold", 0.2);
+            UncheckedTombstoneCompaction = config.GetBoolean("unchecked_tombstone_compaction");
 
-            if (tombstoneCompactionInterval <= 0)
-                throw new ArgumentException($"tombstone_compaction_interval must be greater than 0, but was {tombstoneCompactionInterval}");
-            if (tombstoneThreshold <= 0)
-                throw new ArgumentException($"tombstone_threshold must be greater than 0, but was {tombstoneThreshold}");
+            if (TombstoneCompactionInterval <= 0)
+                throw new ArgumentException($"tombstone_compaction_interval must be greater than 0, but was {TombstoneCompactionInterval}");
+            if (TombstoneThreshold <= 0)
+                throw new ArgumentException($"tombstone_threshold must be greater than 0, but was {TombstoneThreshold}");
 
             AsCQL = $@"
-'enabled' : {enabled.ToString().ToLowerInvariant()},
-'tombstone_compaction_interval' : {tombstoneCompactionInterval},
-'tombstone_threshold' : {tombstoneThreshold},
-'unchecked_tombstone_compaction' : {uncheckedTombstoneCompaction.ToString().ToLowerInvariant()}";
+'enabled' : {Enabled.ToString().ToLowerInvariant()},
+'tombstone_compaction_interval' : {TombstoneCompactionInterval},
+'tombstone_threshold' : {TombstoneThreshold},
+'unchecked_tombstone_compaction' : {UncheckedTombstoneCompaction.ToString().ToLowerInvariant()}".Trim();
         }
+
+        public bool Enabled { get; }
+        public long TombstoneCompactionInterval { get; }
+        public double TombstoneThreshold { get; }
+        public bool UncheckedTombstoneCompaction { get; }
 
         public string AsCQL { get; protected set; }
 

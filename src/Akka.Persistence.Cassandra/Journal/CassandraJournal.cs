@@ -244,6 +244,7 @@ namespace Akka.Persistence.Cassandra.Journal
             // the case for Akka 2.4.2.
             
             var promise = new TaskCompletionSource<object>();
+            var self = Self;
             var messageList = messages.ToList();
             var persistenceId = messageList.First().PersistenceId;
             _writeInProgress[persistenceId] = promise.Task;
@@ -283,7 +284,7 @@ namespace Akka.Persistence.Cassandra.Journal
             }
             finally
             {
-                Self.Tell(new WriteFinished(persistenceId, promise.Task));
+                self.Tell(new WriteFinished(persistenceId, promise.Task));
                 promise.SetResult(new object());
             }
 

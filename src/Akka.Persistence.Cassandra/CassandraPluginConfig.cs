@@ -12,12 +12,12 @@ namespace Akka.Persistence.Cassandra
     /// <summary>
     /// Abstract class for parsing common settings used by both the Journal and Snapshot store from HOCON configuration.
     /// </summary>
-    public abstract class CassandraPluginConfig
+    public class CassandraPluginConfig
     {
         private static readonly Regex KeyspaceAndTableNameRegex =
             new Regex("^(\"[a-zA-Z]{1}[\\w]{0,31}\"|[a-zA-Z]{1}[\\w]{0,31})$");
 
-        protected CassandraPluginConfig(ActorSystem system, Config config)
+        public CassandraPluginConfig(ActorSystem system, Config config)
         {
             Keyspace = ValidateKeyspaceName(config.GetString("keyspace"));
             Table = ValidateTableName(config.GetString("table"));

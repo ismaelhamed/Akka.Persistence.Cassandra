@@ -46,29 +46,26 @@ namespace Akka.Persistence.Cassandra
             }
         }
 
-        public Task<PreparedStatement> Prepare(string statement)
+        public async Task<PreparedStatement> Prepare(string statement)
         {
-            return
-                Underlying.OnRanToCompletion(s => s.PrepareAsync(statement))
-                    .Unwrap();
+            var session = await Underlying;
+            return await session.PrepareAsync(statement);
         }
 
-        public Task ExecuteWrite(Statement statement)
+        public async Task ExecuteWrite(Statement statement)
         {
             if (!statement.ConsistencyLevel.HasValue)
                 statement.SetConsistencyLevel(_settings.WriteConsistency);
-            return
-                Underlying.OnRanToCompletion(s => s.ExecuteAsync(statement))
-                    .Unwrap();
+            var session = await Underlying;
+            await session.ExecuteAsync(statement);
         }
 
-        public Task<RowSet> Select(Statement statement)
+        public async Task<RowSet> Select(Statement statement)
         {
             if (!statement.ConsistencyLevel.HasValue)
                 statement.SetConsistencyLevel(_settings.ReadConsistency);
-            return
-                Underlying.OnRanToCompletion(s => s.ExecuteAsync(statement))
-                    .Unwrap();
+            var session = await Underlying;
+            return await session.ExecuteAsync(statement);
         }
 
         public void Close()
@@ -111,17 +108,19 @@ namespace Akka.Persistence.Cassandra
             return existing;
         }
 
-        private Task<ISession> Initialize(Task<ISession> session)
+        private async Task<ISession> Initialize(Task<ISession> sessionTask)
         {
-            return session.OnRanToCompletion(s =>
+            var session = await sessionTask;
+            try
             {
-                var result = _init(s);
-
-                return result
-                    .OnFaultedOrCanceled(_ => Close(s))
-                    .OnRanToCompletion(() => s);
-            })
-                .Unwrap();
+                await _init(session);
+                return session;
+            }
+            catch (Exception)
+            {
+                Close(session);
+                throw;
+            }
         }
 
         private Task<ISession> Retry(Func<Task<ISession>> setup)
@@ -149,7 +148,7 @@ namespace Akka.Persistence.Cassandra
             {
                 setup().ContinueWith(t =>
                 {
-                    if (t.IsCompleted)
+                    if (!t.IsCanceled && !t.IsFaulted)
                         promise.SetResult(t.Result);
                     else
                     {

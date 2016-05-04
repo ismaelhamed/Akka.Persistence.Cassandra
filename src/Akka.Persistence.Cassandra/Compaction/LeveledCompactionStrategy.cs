@@ -16,18 +16,20 @@ namespace Akka.Persistence.Cassandra.Compaction
                 throw new ArgumentException(
                     $"Config contains properties not supported by a {LeveledCompactionStrategyConfig.Instance.TypeName}");
 
-            // ReSharper disable once InconsistentNaming
-            var ssTableSizeInMB = config.GetLong("sstable_size_in_mb", 160);
+            SSTableSizeInMb = config.GetLong("sstable_size_in_mb", 160);
 
-            if (ssTableSizeInMB <= 0)
-                throw new ArgumentException($"sstable_size_in_mb must be greater than 0, but was {ssTableSizeInMB}");
+            if (SSTableSizeInMb <= 0)
+                throw new ArgumentException($"sstable_size_in_mb must be greater than 0, but was {SSTableSizeInMb}");
 
             AsCQL = $@"{{
 'class' : '{LeveledCompactionStrategyConfig.Instance.TypeName}',
 {AsCQL},
-'sstable_size_in_mb' : {ssTableSizeInMB}
+'sstable_size_in_mb' : {SSTableSizeInMb}
 }}";
         }
+
+        // ReSharper disable once InconsistentNaming
+        public long SSTableSizeInMb { get; }
     }
 
     public class LeveledCompactionStrategyConfig : ICassandraCompactionStrategyConfig<LeveledCompactionStrategy>
@@ -42,7 +44,7 @@ namespace Akka.Persistence.Cassandra.Compaction
 
         public IImmutableList<string> PropertyKeys { get; } = BaseCompactionStrategyConfig.Instance.PropertyKeys.Union(new []
         {
-            "sstable_size_in_mbs"
+            "sstable_size_in_mb"
         }).ToImmutableList();
 
         public LeveledCompactionStrategy FromConfig(Config config)
