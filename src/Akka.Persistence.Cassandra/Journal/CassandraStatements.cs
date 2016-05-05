@@ -6,7 +6,7 @@ using Cassandra;
 
 namespace Akka.Persistence.Cassandra.Journal
 {
-    internal class CassandraStatements
+    public class CassandraStatements
     {
         private readonly CassandraJournalConfig _config;
         private readonly string _createEventsByTagMaterializedView;
@@ -212,55 +212,54 @@ VALUES(?, ?, true)
                 );
         }
 
-        private Task Create(ISession session, CassandraJournalConfig config, int maxTagId)
+        private async Task Create(ISession session, CassandraJournalConfig config, int maxTagId)
         {
-            var keyspace = config.KeyspaceAutocreate
-                ? (Task) session.ExecuteAsync(new SimpleStatement(CreateKeyspace))
-                : Task.FromResult(new object());
+            if (config.KeyspaceAutocreate)
+                await session.ExecuteAsync(new SimpleStatement(CreateKeyspace));
 
-            var tables =
-                config.TablesAutocreate
-                    ? Task.WhenAll(
-                        keyspace,
-                        session.ExecuteAsync(new SimpleStatement(CreateTable)),
-                        session.ExecuteAsync(new SimpleStatement(CreateMetadataTable)),
-                        session.ExecuteAsync(new SimpleStatement(CreateConfigTable))
-                        )
-                    : keyspace;
+            if (!config.TablesAutocreate)
+                return;
+            await Task.WhenAll(
+                session.ExecuteAsync(new SimpleStatement(CreateTable)),
+                session.ExecuteAsync(new SimpleStatement(CreateMetadataTable)),
+                session.ExecuteAsync(new SimpleStatement(CreateConfigTable))
+                );
 
-            if (config.TablesAutocreate)
+            var createTagStatements = Enumerable.Range(1, maxTagId).Select(CreateEventsByTagMaterializedView);
+            foreach (var statement in createTagStatements)
             {
-                var createTagStatements = Enumerable.Range(1, maxTagId).Select(CreateEventsByTagMaterializedView);
-                return createTagStatements.Aggregate(tables, (task, statement) =>
-                {
-                    return task
-                        .OnRanToCompletion(() => session.ExecuteAsync(new SimpleStatement(statement)))
-                        .Unwrap();
-                });
+                await session.ExecuteAsync(new SimpleStatement(statement));
             }
-            return tables;
         }
 
-        public Task<ImmutableDictionary<string, string>> InitializePersistentConfig(ISession session)
+        public async Task<ImmutableDictionary<string, string>> InitializePersistentConfig(ISession session)
         {
-            return session.ExecuteAsync(new SimpleStatement(SelectConfig))
-                .OnRanToCompletion(rs =>
-                {
-                    var properties = rs.ToList()
-                        .ToImmutableDictionary(row => row.GetValue<string>("property"),
-                            row => row.GetValue<string>("value"));
-                    string oldValue;
-                    if (properties.TryGetValue(CassandraJournalConfig.TargetPartitionProperty, out oldValue))
-                    {
-                        AssertCorrectPartitionSize(oldValue);
-                        return Task.FromResult(properties);
-                    }
-                    return session.ExecuteAsync(new SimpleStatement(WriteConfig,
-                        CassandraJournalConfig.TargetPartitionProperty, _config.TargetPartitionSize.ToString()))
-                        .OnRanToCompletion(_ => properties.SetItem(CassandraJournalConfig.TargetPartitionProperty,
-                                    _config.TargetPartitionSize.ToString()));
-                })
-                .Unwrap();
+            var resultSet = await session.ExecuteAsync(new SimpleStatement(SelectConfig));
+
+            var properties = resultSet.ToList()
+                .ToImmutableDictionary(r => r.GetValue<string>("property"),
+                    r => r.GetValue<string>("value"));
+            string oldValue;
+            if (properties.TryGetValue(CassandraJournalConfig.TargetPartitionProperty, out oldValue))
+            {
+                AssertCorrectPartitionSize(oldValue);
+            }
+            else
+            {
+                await session.ExecuteAsync(new SimpleStatement(WriteConfig,
+                    CassandraJournalConfig.TargetPartitionProperty, _config.TargetPartitionSize.ToString()));
+                properties = properties.SetItem(CassandraJournalConfig.TargetPartitionProperty,
+                    _config.TargetPartitionSize.ToString());
+            }
+            resultSet = await session.ExecuteAsync(new SimpleStatement(WriteConfig,
+                CassandraJournalConfig.TargetPartitionProperty, _config.TargetPartitionSize.ToString()));
+            var row = resultSet.First();
+            if (!row.GetValue<bool>("[applied]"))
+            {
+                var @value = row.GetValue<string>("value");
+                AssertCorrectPartitionSize(value);
+            }
+            return properties;
         }
 
         // ReSharper disable once UnusedParameter.Local

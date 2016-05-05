@@ -180,10 +180,18 @@ namespace Akka.Persistence.Cassandra
         {
             var progress = SerializedExecutionProgress.Value;
             var promise = new TaskCompletionSource<object>();
-            progress.OnRanToCompletion(() =>
+            progress.ContinueWith(_ =>
             {
                 var result = SerializedExecutionProgress.CompareAndSet(progress, promise.Task) ? exec() : recur();
-                promise.SetResult(result);
+                result.ContinueWith(t =>
+                {
+                    if (t.IsCanceled)
+                        promise.SetCanceled();
+                    else if (t.IsFaulted)
+                        promise.SetException(t.Exception.Flatten().InnerExceptions);
+                    else
+                        promise.SetResult(new object());
+                });
                 return result;
             });
             return promise.Task;
