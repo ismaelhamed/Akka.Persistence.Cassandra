@@ -111,7 +111,7 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Journal\CassandraJournal.Recovery.cs" />
-    <Compile Include="Journal\PubSubThrotler.cs" />
+    <Compile Include="Journal\PubSubThrottler.cs" />
     <Compile Include="Journal\Tagged.cs" />
     <Compile Include="CassandraSession.cs" />
     <Compile Include="Compaction\BaseCompactionStrategy.cs" />

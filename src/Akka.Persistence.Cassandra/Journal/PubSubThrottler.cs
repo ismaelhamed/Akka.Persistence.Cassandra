@@ -4,11 +4,11 @@ using Akka.Actor;
 
 namespace Akka.Persistence.Cassandra.Journal
 {
-    internal class PubSubThrotler : ActorBase
+    internal class PubSubThrottler : ActorBase
     {
         public static Props Props(IActorRef @delegate, TimeSpan interval)
         {
-            return Actor.Props.Create(() => new PubSubThrotler(@delegate, interval));
+            return Actor.Props.Create(() => new PubSubThrottler(@delegate, interval));
         }
 
         private sealed class Tick
@@ -25,7 +25,7 @@ namespace Akka.Persistence.Cassandra.Journal
 
         private readonly ICancelable _timer;
 
-        public PubSubThrotler(IActorRef @delegate, TimeSpan interval)
+        public PubSubThrottler(IActorRef @delegate, TimeSpan interval)
         {
             Delegate = @delegate;
             Interval = interval;

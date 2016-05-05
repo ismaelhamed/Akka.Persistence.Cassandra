@@ -42,10 +42,10 @@ akka.actor.serialize-messages = off
         {
             TestSetupHelpers.ResetJournalData(Sys);
             TestSetupHelpers.ResetSnapshotStoreData(Sys);
-            AwaitPersistenceInit(Sys);
+            AwaitPersistenceInit();
         }
 
-        protected void AwaitPersistenceInit()
+        protected virtual void AwaitPersistenceInit()
         {
             AwaitPersistenceInit(Sys);
         }

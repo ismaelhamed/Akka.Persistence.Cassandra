@@ -143,7 +143,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 {
                     var extension = DistributedPubSub.Get(Context.System);
                     if (!extension.IsTerminated)
-                        _pubsub = Context.ActorOf(PubSubThrotler.Props(extension.Mediator,
+                        _pubsub = Context.ActorOf(PubSubThrottler.Props(extension.Mediator,
                             _config.PubsubMinimumInterval.Value).WithDispatcher(Context.Props.Dispatcher));
                 }
                 catch

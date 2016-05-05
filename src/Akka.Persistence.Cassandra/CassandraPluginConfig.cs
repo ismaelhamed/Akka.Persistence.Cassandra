@@ -146,7 +146,7 @@ namespace Akka.Persistence.Cassandra
             var result = dataCenterReplicationFactors.Select(dataCenterReplicationFactor =>
             {
                 var parts = dataCenterReplicationFactor.Split(':');
-                if (dataCenterReplicationFactors.Count != 2)
+                if (parts.Length != 2)
                     throw new ArgumentException(
                         $"A data-center-replication-factor must have the form [dataCenterName:replicationFactor] but was: {dataCenterReplicationFactor}.");
                 return $"'{parts[0]}':{parts[1]}";
