@@ -275,8 +275,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     var position = 0;
                     while (position < serialized.Count)
                     {
-                        result = WriteMessages(serialized.Skip(position).Take(_config.MaxMessageBatchSize).ToList());
-                        await result;
+                        await WriteMessages(serialized.Skip(position).Take(_config.MaxMessageBatchSize).ToList());
                         position += _config.MaxMessageBatchSize;
                     }
                 }

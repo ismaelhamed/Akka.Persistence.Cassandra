@@ -26,14 +26,14 @@ namespace Akka.Persistence.Cassandra.Query
         private readonly Akka.Serialization.Serialization _serialization;
 
         public EventsByPersistenceIdPublisher(string persistenceId, long fromSequenceNr, long toSequenceNr, long max,
-            int pageSize, TimeSpan? refreshInterval, EventsByPersistenceIdSession session,
+            int fetchSize, TimeSpan? refreshInterval, EventsByPersistenceIdSession session,
             CassandraReadJournalConfig config) : base(refreshInterval, config)
         {
             PersistenceId = persistenceId;
             FromSequenceNr = fromSequenceNr;
             ToSequenceNr = toSequenceNr;
             Max = max;
-            PageSize = pageSize;
+            FetchSize = fetchSize;
             Session = session;
 
             _serialization = Context.System.Serialization;
@@ -43,20 +43,17 @@ namespace Akka.Persistence.Cassandra.Query
         public long FromSequenceNr { get; }
         public long ToSequenceNr { get; }
         public long Max { get; }
-        public int PageSize { get; }
+        public int FetchSize { get; }
         public EventsByPersistenceIdSession Session { get; }
 
-        protected override Task<EventsByPersistenceIdState> InitialState()
+        protected override async Task<EventsByPersistenceIdState> InitialState()
         {
 
-            return HighestDeletedSequenceNumber(PersistenceId)
-                .OnRanToCompletion(del =>
-                {
-                    var initialFromSequenceNr = Math.Max(del + 1, FromSequenceNr);
-                    var currentPartitionNumber = PartitionNr(initialFromSequenceNr, Config.TargetPartitionSize) + 1;
+            var highestDeletedSequenceNr = await HighestDeletedSequenceNumber(PersistenceId);
+            var initialFromSequenceNr = Math.Max(highestDeletedSequenceNr + 1, FromSequenceNr);
+            var currentPartitionNumber = PartitionNr(initialFromSequenceNr, Config.TargetPartitionSize) + 1;
 
-                    return new EventsByPersistenceIdState(initialFromSequenceNr, 0, currentPartitionNumber);
-                });
+            return new EventsByPersistenceIdState(initialFromSequenceNr, 0, currentPartitionNumber);
         }
 
         protected override Task<IAction> InitialQuery(EventsByPersistenceIdState initialState)
@@ -65,22 +62,17 @@ namespace Akka.Persistence.Cassandra.Query
                 initialState.PartitionNr - 1));
         }
 
-        protected override Task<IAction> RequestNext(EventsByPersistenceIdState state, RowSet resultSet)
+        protected override async Task<IAction> RequestNext(EventsByPersistenceIdState state, RowSet resultSet)
         {
-            return InUse(PersistenceId, state.PartitionNr)
-                .OnRanToCompletion(inUse => inUse ? Query(state) : Task.FromResult((IAction) new Finished(resultSet)))
-                .Unwrap();
+            var inUse = await InUse(PersistenceId, state.PartitionNr);
+            return inUse ? await Query(state) : new Finished(resultSet);
         }
 
-        protected override Task<IAction> RequestNextFinished(EventsByPersistenceIdState state, RowSet resultSet)
+        protected override async Task<IAction> RequestNextFinished(EventsByPersistenceIdState state, RowSet resultSet)
         {
-            return Query(new EventsByPersistenceIdState(state.Progress, state.Count, state.PartitionNr - 1))
-                .OnRanToCompletion(a =>
-                {
-                    var newResultSet = ((NewResultSet) a).ResultSet;
-                    return newResultSet.IsExhausted() ? RequestNext(state, resultSet) : Task.FromResult(a);
-                })
-                .Unwrap();
+            var action = await Query(new EventsByPersistenceIdState(state.Progress, state.Count, state.PartitionNr - 1));
+            var newResultSet = ((NewResultSet) action).ResultSet;
+            return newResultSet.IsExhausted() ? await RequestNext(state, resultSet) : action;
         }
 
         protected override Tuple<Option<Persistent>, EventsByPersistenceIdState> UpdateState(
@@ -123,20 +115,29 @@ namespace Akka.Persistence.Cassandra.Query
                 (Persistent) serialization.FindSerializerFor(typeof(Persistent)).FromBinary(bytes, typeof(Persistent));
         }
 
-        private Task<bool> InUse(string persistenceId, long currentPartitionNr) =>
-            Session.SelectInUse(persistenceId, currentPartitionNr)
-                .OnRanToCompletion(rs => !rs.IsExhausted() && rs.First().GetValue<bool>("used"));
+        private async Task<bool> InUse(string persistenceId, long currentPartitionNr)
+        {
+            var resultSet = await Session.SelectInUse(persistenceId, currentPartitionNr);
+            return !resultSet.IsExhausted() && resultSet.First().GetValue<bool>("used");
+        }
 
-        private Task<long> HighestDeletedSequenceNumber(string partitionKey) =>
-            Session.SelectDeletedTo(partitionKey)
-                .OnRanToCompletion(rs => rs.FirstOrDefault()?.GetValue<long>("deleted_to") ?? 0);
+        private async Task<long> HighestDeletedSequenceNumber(string partitionKey)
+        {
+            var resultSet = await Session.SelectDeletedTo(partitionKey);
+            return resultSet.FirstOrDefault()?.GetValue<long>("deleted_to") ?? 0;
+        }
 
-        private long PartitionNr(long sequenceNr, int targetPartitionSize) =>
+        private static long PartitionNr(long sequenceNr, int targetPartitionSize) =>
             (sequenceNr - 1L)/targetPartitionSize;
 
-        private Task<IAction> Query(EventsByPersistenceIdState state) =>
-            Session.SelectEventsByPersistenceId(PersistenceId, state.PartitionNr, state.Progress, ToSequenceNr, PageSize)
-                .OnRanToCompletion(rs => (IAction) new NewResultSet(rs));
+        private async Task<IAction> Query(EventsByPersistenceIdState state)
+        {
+            var resultSet =
+                await
+                    Session.SelectEventsByPersistenceId(PersistenceId, state.PartitionNr, state.Progress, ToSequenceNr,
+                        FetchSize);
+            return new NewResultSet(resultSet);
+        }
     }
 
     internal class EventsByPersistenceIdSession
@@ -159,11 +160,11 @@ namespace Akka.Persistence.Cassandra.Query
         }
 
         public Task<RowSet> SelectEventsByPersistenceId(string persistenceId, long partitionNr, long progress,
-            long toSequenceNr, int pageSize)
+            long toSequenceNr, int fetchSize)
         {
             var boundStatement = SelectEventsByPersistenceIdQuery.Bind(persistenceId, partitionNr, progress,
                 toSequenceNr);
-            boundStatement.SetPageSize(pageSize);
+            boundStatement.SetPageSize(fetchSize);
             return ExecuteStatement(boundStatement);
         }
 

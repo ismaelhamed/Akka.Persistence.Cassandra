@@ -53,7 +53,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 }
 
                 var used = row.GetValue<bool>("used");
-                var nextHighest = row.GetValue<long>("sequence_nr");
+                var nextHighest = row.GetValue<long?>("sequence_nr") ?? 0;
                 if (!used)
                 {
                     // don't currently explicitly set false
