@@ -103,10 +103,13 @@
     <Compile Include="Await.cs" />
     <Compile Include="CassandraConfig.cs" />
     <Compile Include="CassandraIntegrationSpec.cs" />
-    <Compile Include="CassandraJournalSpec.cs" />
     <Compile Include="CassandraPersistenceSpec.cs" />
     <Compile Include="Compaction\CassandraCompactionStrategySpec.cs" />
     <Compile Include="Journal\CassandraConfigCheckerSpec.cs" />
+    <Compile Include="Journal\CassandraJournalCompat2Spec.cs" />
+    <Compile Include="Journal\CassandraJournalPerfSpec.cs" />
+    <Compile Include="Journal\CassandraJournalProtocolV3Spec.cs" />
+    <Compile Include="Journal\CassandraJournalSpec.cs" />
     <Compile Include="Journal\CassandraLoadSpec.cs" />
     <Compile Include="Journal\PubSubThrottlerSpec.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

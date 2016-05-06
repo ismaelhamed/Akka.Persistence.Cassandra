@@ -26,7 +26,7 @@ cassandra-snapshot-store.max-metadata-result-size = 2"
         // ByteArraySerializer
         private const int SerializerId = 4;
 
-        public CassandraSnapshotStoreSpec(ITestOutputHelper output = null) : base(Config, null, output)
+        public CassandraSnapshotStoreSpec(ITestOutputHelper output = null) : base(Config, "CassandraSnapshotStoreSpec", output)
         {
             CassandraPersistenceSpec.BeforeAll(this);
             var storeConfig = new CassandraSnapshotStoreConfig(Sys, Sys.Settings.Config.GetConfig("cassandra-snapshot-store"));

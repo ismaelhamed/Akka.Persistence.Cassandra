@@ -632,7 +632,7 @@ namespace Akka.Persistence.Cassandra.Journal
                     var sequenceNr = row.GetValue<long>("sequence_nr");
                     // there may be duplicates returned by row enumerator
                     // (on scan boundaries within a partition)
-                    if (sequenceNr == previous.SequenceNr) continue;
+                    if (previous != null && sequenceNr == previous.SequenceNr) continue;
                     var messageBytes = row.GetValue<byte[]>("message");
                     if (messageBytes == null)
                     {
@@ -706,6 +706,7 @@ namespace Akka.Persistence.Cassandra.Journal
                 _preparedSelectMessages = _journal._preparedSelectMessages.Value.Result;
                 _journal._preparedCheckInUse.Value.Wait(_journal._config.BlockingTimeout);
                 _preparedCheckInUse = _journal._preparedCheckInUse.Value.Result;
+                _rowEnumerator = NewEnumerator();
             }
 
             public bool MoveNext()
