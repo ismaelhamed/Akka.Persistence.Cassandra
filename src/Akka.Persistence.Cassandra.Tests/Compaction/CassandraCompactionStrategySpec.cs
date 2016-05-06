@@ -35,8 +35,6 @@ cassandra-snapshot-store.keyspace = CompactionStrategySpecSnapshot"
                 "CREATE KEYSPACE IF NOT EXISTS testKeyspace WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }");
         }
 
-        protected override string SystemName => "CassandraCompactionStrategySpec";
-
         protected override void AfterAll()
         {
             _session.Dispose();

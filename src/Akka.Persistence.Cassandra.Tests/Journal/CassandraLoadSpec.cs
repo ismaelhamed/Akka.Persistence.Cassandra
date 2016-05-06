@@ -122,8 +122,6 @@ akka.actor.serialize-messages = off"
             _output = output;
         }
 
-        protected override string SystemName => "CassandraLoadSpec";
-
         [Fact]
         public void A_Cassandra_journal_should_have_some_reasonable_write_throughput()
         {

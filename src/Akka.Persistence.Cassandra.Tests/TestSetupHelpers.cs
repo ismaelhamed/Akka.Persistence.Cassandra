@@ -1,5 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Akka.Actor;
 
 namespace Akka.Persistence.Cassandra.Tests
@@ -16,8 +15,7 @@ namespace Akka.Persistence.Cassandra.Tests
 
             // Use session to remove keyspace
             var session = new CassandraSession(sys, ext.JournalConfig, sys.Log, "", s => Task.FromResult(new object()));
-            session.Underlying.Wait(TimeSpan.FromSeconds(3));
-            session.Underlying.Result.DeleteKeyspaceIfExists(ext.JournalConfig.Keyspace);
+            Await.Result(session.Underlying, 3000).DeleteKeyspaceIfExists(ext.JournalConfig.Keyspace);
             session.Underlying.Dispose();
         }
 
@@ -28,8 +26,7 @@ namespace Akka.Persistence.Cassandra.Tests
 
             // Use session to remove the keyspace
             var session = new CassandraSession(sys, ext.SnapshotStoreConfig, sys.Log, "", s => Task.FromResult(new object()));
-            session.Underlying.Wait(TimeSpan.FromSeconds(3));
-            session.Underlying.Result.DeleteKeyspaceIfExists(ext.SnapshotStoreConfig.Keyspace);
+            Await.Result(session.Underlying, 3000).DeleteKeyspaceIfExists(ext.SnapshotStoreConfig.Keyspace);
             session.Underlying.Dispose();
         }
     }

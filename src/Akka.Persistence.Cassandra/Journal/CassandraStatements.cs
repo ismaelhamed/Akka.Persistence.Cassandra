@@ -80,7 +80,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS {eventsByTagViewName}{{0}} AS
             WriteMessage =
                 $@"
 INSERT INTO {tableName} (persistence_id, partition_nr, sequence_nr, timestamp, timebucket, writer_uuid, ser_id, ser_manifest, event_manifest, event, tag1, tag2, tag3, message, used)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? , true)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true)
 ";
 
             DeleteMessage =

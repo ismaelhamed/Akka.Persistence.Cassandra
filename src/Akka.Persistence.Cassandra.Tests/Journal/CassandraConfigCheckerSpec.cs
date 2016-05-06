@@ -73,8 +73,6 @@ cassandra-snapshot-store.port = {CassandraConfig.Port}";
             base.AfterAll();
         }
 
-        protected override string SystemName => "CassandraConfigCheckerSpec";
-
         [Fact]
         public void CassandraConfigChecker_should_persist_value_in_cassandra()
         {
@@ -82,9 +80,7 @@ cassandra-snapshot-store.port = {CassandraConfig.Port}";
             var underTest = CreateCassandraConfigChecker(_cfg);
             _session.Value.Execute($"TRUNCATE {_pluginConfig.Keyspace}.{_pluginConfig.ConfigTable}");
 
-            var persistentConfigTask = underTest.InitializePersistentConfig(_session.Value);
-            persistentConfigTask.Wait(RemainingOrDefault);
-            var persistentConfig = persistentConfigTask.Result;
+            var persistentConfig = Await.Result(underTest.InitializePersistentConfig(_session.Value), RemainingOrDefault);
             persistentConfig.ContainsKey(CassandraJournalConfig.TargetPartitionProperty).Should().BeTrue();
             persistentConfig[CassandraJournalConfig.TargetPartitionProperty].Should().Be("5");
             GetTargetSize(underTest).Should().Be("5");
@@ -100,9 +96,7 @@ cassandra-snapshot-store.port = {CassandraConfig.Port}";
             Enumerable.Range(1, 5).ForEach(_ =>
             {
                 var underTest = CreateCassandraConfigChecker(_cfg);
-                var persistentConfigTask = underTest.InitializePersistentConfig(_session.Value);
-                persistentConfigTask.Wait(RemainingOrDefault);
-                var persistentConfig = persistentConfigTask.Result;
+                var persistentConfig = Await.Result(underTest.InitializePersistentConfig(_session.Value), RemainingOrDefault);
                 persistentConfig.ContainsKey(CassandraJournalConfig.TargetPartitionProperty).Should().BeTrue();
                 persistentConfig[CassandraJournalConfig.TargetPartitionProperty].Should().Be("5");
                 GetTargetSize(underTest).Should().Be("5");
@@ -116,8 +110,7 @@ cassandra-snapshot-store.port = {CassandraConfig.Port}";
             var underTest = CreateCassandraConfigChecker(_cfg);
             _session.Value.Execute($"TRUNCATE {_pluginConfig.Keyspace}.{_pluginConfig.ConfigTable}");
 
-            var persistentConfigTask = underTest.InitializePersistentConfig(_session.Value);
-            persistentConfigTask.Wait(RemainingOrDefault);
+            Await.Result(underTest.InitializePersistentConfig(_session.Value), RemainingOrDefault);
 
             var try3Size =
                 CreateCassandraConfigChecker(

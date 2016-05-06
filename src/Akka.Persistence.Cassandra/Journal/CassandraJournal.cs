@@ -375,13 +375,12 @@ namespace Akka.Persistence.Cassandra.Journal
                     ser_manifest = m.SerializationManifest,
                     event_manifest = m.EventManifest,
                     @event = m.Data,
+                    tag1 = (string) null,
+                    tag2 = (string) null,
+                    tag3 = (string) null,
                     // for backwards compatibility
                     message = (byte[]) null
                 };
-                if (_session.ProtocolVersion.HasValue && _session.ProtocolVersion.Value < 4)
-                {
-                    Enumerable.Range(1, _config.MaxTagsPerEvent).ForEach(i => parameters[$"tag{i}"] = (string) null);
-                }
                 if (m.Tags.Count > 0)
                 {
                     var tagCounts = new int[_config.MaxTagsPerEvent];

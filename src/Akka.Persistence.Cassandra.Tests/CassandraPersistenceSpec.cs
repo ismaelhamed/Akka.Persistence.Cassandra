@@ -1,6 +1,7 @@
 ﻿using System;
 using Akka.Actor;
 using Akka.Configuration;
+using Akka.TestKit;
 using Xunit.Abstractions;
 
 namespace Akka.Persistence.Cassandra.Tests
@@ -36,8 +37,6 @@ akka.actor.serialize-messages = off
             }
         }
 
-        protected abstract string SystemName { get; }
-
         protected CassandraPersistenceSpec(Config config, string actorSystemName = null, ITestOutputHelper output = null) : base(config, actorSystemName, output)
         {
             TestSetupHelpers.ResetJournalData(Sys);
@@ -52,8 +51,19 @@ akka.actor.serialize-messages = off
 
         private void AwaitPersistenceInit(ActorSystem system)
         {
-            var probe = CreateTestProbe(system);
-            system.ActorOf(Props.Create(() => new AwaitPersistenceInitActor())).Tell("hello", probe.Ref);
+            AwaitPersistenceInit(CreateTestProbe(system));
+        }
+
+        public static void BeforeAll(TestKitBase test)
+        {
+            TestSetupHelpers.ResetJournalData(test.Sys);
+            TestSetupHelpers.ResetSnapshotStoreData(test.Sys);
+            AwaitPersistenceInit(test.CreateTestProbe());
+        }
+
+        private static void AwaitPersistenceInit(TestProbe probe)
+        {
+            probe.Sys.ActorOf(Props.Create(() => new AwaitPersistenceInitActor())).Tell("hello", probe.Ref);
             probe.ExpectMsg("hello", TimeSpan.FromSeconds(35));
         }
     }

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
 using Akka.Actor;
@@ -108,118 +107,100 @@ namespace Akka.Persistence.Cassandra.Snapshot
             base.PostStop();
         }
 
-        protected override Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
+        protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
-            return _preparedSelectSnapshotMetadataForLoad.Value
-                .OnRanToCompletion(ps => Metadata(ps, persistenceId, criteria, 3))
-                .Unwrap()
-                .OnRanToCompletion(m => LoadNAsync(m.ToImmutableList()))
-                .Unwrap();
+            var preparedStatement = await _preparedSelectSnapshotMetadataForLoad.Value;
+            var metadata = await Metadata(preparedStatement, persistenceId, criteria, 3);
+            var snapshot = await LoadNAsync(metadata);
+            return snapshot;
         }
 
-        private Task<SelectedSnapshot> LoadNAsync(ImmutableList<SnapshotMetadata> metadata)
+        private async Task<SelectedSnapshot> LoadNAsync(IEnumerable<SnapshotMetadata> metadata)
         {
-            if (metadata.Count == 0)
-                return Task.FromResult((SelectedSnapshot) null);
-            var md = metadata[0];
-
-            return Load1Async(md)
-                .OnRanToCompletion(s => new SelectedSnapshot(md, s.Data))
-                .ContinueWith(t =>
+            foreach (var md in metadata)
+            {
+                try
                 {
-                    if (t.IsFaulted || t.IsCanceled)
-                    {
-                        _log.Warning(
-                            // ReSharper disable once PossibleNullReferenceException
-                            $"Failed to load snapshot, trying older one. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "Cancelled")}");
-                        return LoadNAsync(metadata.RemoveAt(0));
-                    }
-                    return Task.FromResult(t.Result);
-                })
-                .Unwrap();
-        }
-
-        private Task<Serialization.Snapshot> Load1Async(SnapshotMetadata metadata)
-        {
-            var boundSelectSnapshot = _preparedSelectSnapshot.Value
-                .OnRanToCompletion(ps => ps.Bind(metadata.PersistenceId, metadata.SequenceNr));
-
-            return boundSelectSnapshot
-                .OnRanToCompletion(bs => _session.Select(bs))
-                .Unwrap()
-                .OnRanToCompletion(rs =>
+                    var snapshot = await Load1Async(md);
+                    var selectedSnapshot = new SelectedSnapshot(md, snapshot.Data);
+                    return selectedSnapshot;
+                }
+                catch (Exception e)
                 {
-                    var row = rs.Single();
-                    var bytes = row.GetValue<byte[]>("snapshot");
-                    if (bytes == null)
-                    {
-                        return new Serialization.Snapshot(_serialization.Deserialize(
-                            row.GetValue<byte[]>("snapshot_data"),
-                            row.GetValue<int>("ser_id"),
-                            row.GetValue<string>("ser_manifest")
-                            ));
-                    }
-                    // for backwards compatibility
-                    return (Serialization.Snapshot) _serializer.FromBinary(bytes, typeof(Serialization.Snapshot));
-                });
+                    _log.Warning(
+                        // ReSharper disable once PossibleNullReferenceException
+                        $"Failed to load snapshot, trying older one. Caused by: {e.Message}");
+                }
+            }
+            return null;
         }
 
-        protected override Task SaveAsync(SnapshotMetadata metadata, object snapshot)
+        private async Task<Serialization.Snapshot> Load1Async(SnapshotMetadata metadata)
+        {
+            var preparedStatement = await _preparedSelectSnapshot.Value;
+            var boundSelectSnapshot = preparedStatement.Bind(metadata.PersistenceId, metadata.SequenceNr);
+
+            var resultSet = await _session.Select(boundSelectSnapshot);
+
+            var row = resultSet.Single();
+            var bytes = row.GetValue<byte[]>("snapshot");
+            if (bytes == null)
+            {
+                return new Serialization.Snapshot(_serialization.Deserialize(
+                    row.GetValue<byte[]>("snapshot_data"),
+                    row.GetValue<int>("ser_id"),
+                    row.GetValue<string>("ser_manifest")
+                    ));
+            }
+            // for backwards compatibility
+            return (Serialization.Snapshot) _serializer.FromBinary(bytes, typeof(Serialization.Snapshot));
+        }
+
+        protected override async Task SaveAsync(SnapshotMetadata metadata, object snapshot)
         {
             var serialized = Serialize(snapshot);
-            return _preparedWriteSnapshot.Value
-                .OnRanToCompletion(ps =>
-                {
-                    var bs = ps.Bind(new
-                    {
-                        persistence_id = metadata.PersistenceId,
-                        sequence_nr = metadata.SequenceNr,
-                        timestamp = metadata.Timestamp,
-                        ser_id = serialized.SerializerId,
-                        ser_manifest = serialized.SerializationManifest,
-                        snapshot_data = serialized.Bytes,
-                        // for backwards compatibility
-                        snapshot = (string) null
-                    });
-                    return _session.ExecuteWrite(bs);
-                })
-                .Unwrap();
+            var preparedStatement = await _preparedWriteSnapshot.Value;
+
+            var boundStatement = preparedStatement.Bind(new
+            {
+                persistence_id = metadata.PersistenceId,
+                sequence_nr = metadata.SequenceNr,
+                timestamp = metadata.Timestamp.ToUniversalTime().Ticks,
+                ser_id = serialized.SerializerId,
+                ser_manifest = serialized.SerializationManifest,
+                snapshot_data = serialized.Bytes,
+                // for backwards compatibility
+                snapshot = (string) null
+            });
+            await _session.ExecuteWrite(boundStatement);
         }
 
-        protected override Task DeleteAsync(SnapshotMetadata metadata)
+        protected override async Task DeleteAsync(SnapshotMetadata metadata)
         {
-            var boundDeleteSnapshot = _preparedDeleteSnapshot.Value
-                .OnRanToCompletion(ps => ps.Bind(metadata.PersistenceId, metadata.SequenceNr));
-            return boundDeleteSnapshot
-                .OnRanToCompletion(bs => _session.ExecuteWrite(bs))
-                .Unwrap();
+            var preparedStatement = await _preparedDeleteSnapshot.Value;
+            var boundDeleteSnapshot = preparedStatement.Bind(metadata.PersistenceId, metadata.SequenceNr);
+            await _session.ExecuteWrite(boundDeleteSnapshot);
         }
 
-        protected override Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
+        protected override async Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
-            return _preparedSelectSnapshotMetadataForDelete.Value
-                .OnRanToCompletion(ps => Metadata(ps, persistenceId, criteria))
-                .Unwrap()
-                .OnRanToCompletion(m =>
+            var preparedStatement = await _preparedSelectSnapshotMetadataForDelete.Value;
+            var metadata = await Metadata(preparedStatement, persistenceId, criteria);
+            var boundStatements = await Task.WhenAll(metadata
+                .Select(async m =>
                 {
-                    var boundStatements = m
-                        .Select(metadata => _preparedDeleteSnapshot.Value
-                            .OnRanToCompletion(_ => _.Bind(metadata.PersistenceId, metadata.SequenceNr)
-                            ));
-                    return Task.WhenAll(boundStatements);
-                })
-                .Unwrap()
-                .OnRanToCompletion(statements => ExecuteBatch(batch => statements.ForEach(s => batch.Add(s))))
-                .Unwrap();
+                    var ps = await _preparedDeleteSnapshot.Value;
+                    return ps.Bind(m.PersistenceId, m.SequenceNr);
+                }));
+            await ExecuteBatch(batch => boundStatements.ForEach(s => batch.Add(s)));
         }
 
-        private Task ExecuteBatch(Action<BatchStatement> body)
+        private async Task ExecuteBatch(Action<BatchStatement> body)
         {
             var batch = (BatchStatement) new BatchStatement().SetConsistencyLevel(_config.WriteConsistency);
             body(batch);
-            return _session.Underlying
-                .OnRanToCompletion(_ => _.ExecuteAsync(batch))
-                .Unwrap();
+            var session = await _session.Underlying;
+            await session.ExecuteAsync(batch);
         }
 
         private Serialized Serialize(object payload)
@@ -252,7 +233,7 @@ namespace Akka.Persistence.Cassandra.Snapshot
             var promise = new TaskCompletionSource<ICollection<SnapshotMetadata>>();
             var result = 
                 Rows(preparedStatement, persistenceId, criteria.MaxSequenceNr)
-                .Where(row => row.GetValue<long>("timestamp") > criteria.MaxTimeStamp.Ticks);
+                .Where(row => row.GetValue<long>("timestamp") <= criteria.MaxTimeStamp.Ticks);
             if (limit.HasValue)
                 result = result.Take(limit.Value);
             promise.SetResult(result.Select(MapRowToSnapshotMetadata).ToList());
@@ -294,7 +275,7 @@ namespace Akka.Persistence.Cassandra.Snapshot
         private static SnapshotMetadata MapRowToSnapshotMetadata(Row row)
         {
             return new SnapshotMetadata(row.GetValue<string>("persistence_id"), row.GetValue<long>("sequence_nr"),
-                                        new DateTime(row.GetValue<long>("timestamp")));
+                                        new DateTime(row.GetValue<long>("timestamp"), DateTimeKind.Utc));
         }
 
         private class Init

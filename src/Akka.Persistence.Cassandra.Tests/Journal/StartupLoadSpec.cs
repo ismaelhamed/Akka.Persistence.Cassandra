@@ -58,8 +58,6 @@ cassandra-snapshot-store.keyspace = StartupLoadSpecSnapshot"
         {
         }
 
-        protected override string SystemName => "StartupLoadSpec";
-
         protected override void AwaitPersistenceInit()
         {
             // important, since we are testing the initialization
