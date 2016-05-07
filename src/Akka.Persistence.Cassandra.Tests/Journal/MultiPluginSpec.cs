@@ -1,7 +1,6 @@
 ﻿using System;
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Configuration.Hocon;
 using Akka.Persistence.Cassandra.Journal;
 using Cassandra;
 using Xunit;
