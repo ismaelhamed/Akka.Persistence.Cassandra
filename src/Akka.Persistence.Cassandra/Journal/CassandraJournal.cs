@@ -362,23 +362,23 @@ namespace Akka.Persistence.Cassandra.Journal
                 var nowGuid = TimeUuid.NewId();
                 var now = nowGuid.GetDate();
                 var statement = await _preparedWriteMessage.Value;
-                dynamic parameters = new
+                var parameters = new object[]
                 {
-                    persistence_id = persistenceId,
-                    partition_nr = maxPartitionNr,
-                    sequence_nr = m.SequenceNr,
-                    timestamp = nowGuid,
-                    timebucket = new TimeBucket(now).Key,
-                    writer_uuid = m.WriterGuid,
-                    ser_id = m.SeralizerId,
-                    ser_manifest = m.SerializationManifest,
-                    event_manifest = m.EventManifest,
-                    @event = m.Data,
-                    tag1 = (string) null,
-                    tag2 = (string) null,
-                    tag3 = (string) null,
+                    persistenceId, // persistence_id
+                    maxPartitionNr, // partition_nr
+                    m.SequenceNr, // sequence_nr
+                    nowGuid, // timestamp
+                    new TimeBucket(now).Key, // timebucket
+                    m.WriterGuid, // writer_uuid
+                    m.SeralizerId, // ser_id
+                    m.SerializationManifest, // ser_manifest
+                    m.EventManifest, // event_manifest
+                    m.Data, // event
+                    null, // tag1
+                    null, // tag2
+                    null, // tag3
                     // for backwards compatibility
-                    message = (byte[]) null
+                    null // message
                 };
                 if (m.Tags.Count > 0)
                 {
@@ -388,7 +388,7 @@ namespace Akka.Persistence.Cassandra.Journal
                         int tagId;
                         if (!_config.Tags.TryGetValue(tag, out tagId))
                             tagId = 1;
-                        parameters[$"tag{tagId}"] = tag;
+                        parameters[9 + tagId] = tag;
                         tagCounts[tagId - 1] = tagCounts[tagId - 1] + 1;
                         for (var i = 0; i < tagCounts.Length; i++)
                         {

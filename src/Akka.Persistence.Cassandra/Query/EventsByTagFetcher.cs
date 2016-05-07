@@ -226,7 +226,7 @@ namespace Akka.Persistence.Cassandra.Query
                     row.GetValue<string>("event_manifest"),
                     false,
                     null,
-                    row.GetValue<string>("writer_guid"));
+                    row.GetValue<string>("writer_uuid"));
             // for backwards compatibility
             return PersistentFromBytes(bytes);
         }

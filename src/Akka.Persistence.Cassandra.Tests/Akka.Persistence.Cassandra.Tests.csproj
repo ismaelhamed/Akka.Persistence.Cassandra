@@ -116,7 +116,10 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Journal\StartupLoadSpec.cs" />
     <Compile Include="Query\AllPersistenceIdsSpec.cs" />
+    <Compile Include="Query\EventAdaptersReadSpec.cs" />
+    <Compile Include="Query\SequenceNumbersSpec.cs" />
     <Compile Include="Query\TestActor.cs" />
+    <Compile Include="Query\TestEventAdapter.cs" />
     <Compile Include="Snapshot\CassandraSnapshotStoreProtocolV3Spec.cs" />
     <Compile Include="Snapshot\CassandraSnapshotStoreSpec.cs" />
     <Compile Include="TestSetupHelpers.cs" />
