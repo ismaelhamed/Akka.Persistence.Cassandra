@@ -111,6 +111,7 @@
     <Compile Include="Journal\CassandraJournalProtocolV3Spec.cs" />
     <Compile Include="Journal\CassandraJournalSpec.cs" />
     <Compile Include="Journal\CassandraLoadSpec.cs" />
+    <Compile Include="Journal\MultiPluginSpec.cs" />
     <Compile Include="Journal\PubSubThrottlerSpec.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Journal\StartupLoadSpec.cs" />
