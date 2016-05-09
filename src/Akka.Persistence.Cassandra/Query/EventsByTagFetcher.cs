@@ -187,7 +187,7 @@ namespace Akka.Persistence.Cassandra.Query
                                 break;
                             case SequenceNumbers.Answer.After:
                                 ReplyTo.Tell(new EventsByTagPublisher.ReplayAborted(_sequenceNumbers, persistenceId,
-                                    s.Get(persistenceId), sequenceNr));
+                                    s.Get(persistenceId) + 1, sequenceNr));
                                 // end loop
                                 exitLoop = true;
                                 break;

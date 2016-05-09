@@ -118,6 +118,8 @@
     <Compile Include="Query\AllPersistenceIdsSpec.cs" />
     <Compile Include="Query\EventAdaptersReadSpec.cs" />
     <Compile Include="Query\EventsByPersistenceIdSpec.cs" />
+    <Compile Include="Query\EventsByTagPubsubSpec.cs" />
+    <Compile Include="Query\EventsByTagSpec.cs" />
     <Compile Include="Query\SequenceNumbersSpec.cs" />
     <Compile Include="Query\TestActor.cs" />
     <Compile Include="Query\TestEventAdapter.cs" />

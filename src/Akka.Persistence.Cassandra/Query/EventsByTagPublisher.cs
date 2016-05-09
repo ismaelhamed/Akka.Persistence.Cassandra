@@ -181,8 +181,9 @@ namespace Akka.Persistence.Cassandra.Query
             }
             else if (TotalDemand <= int.MaxValue)
             {
-                Buffer.Take((int) TotalDemand).ForEach(OnNext);
-                Buffer = Buffer.Skip((int) TotalDemand).ToImmutableArray();
+                var totalDemand = (int) TotalDemand;
+                Buffer.Take(totalDemand).ForEach(OnNext);
+                Buffer = Buffer.Skip(totalDemand).ToImmutableArray();
             }
             else
             {
