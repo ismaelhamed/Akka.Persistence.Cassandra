@@ -1,4 +1,11 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright file="CassandraPluginConfigTest.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -249,23 +256,5 @@ data-center-replication-factors = [""dc1:3"", ""dc2:2""]
             var config = new CassandraPluginConfig(Sys, configWithFalseTablesAutocreate);
             config.TablesAutocreate.Should().Be(false);
         }
-
-        /*
-
-    "parse keyspace-autocreate parameter" in {
-      val configWithFalseKeyspaceAutocreate = ConfigFactory.parseString("""keyspace-autocreate = false""").withFallback(defaultConfig)
-
-      val config = new CassandraPluginConfig(system, configWithFalseKeyspaceAutocreate)
-      config.keyspaceAutoCreate must be(false)
-    }
-
-    "parse tables-autocreate parameter" in {
-      val configWithFalseTablesAutocreate = ConfigFactory.parseString("""tables-autocreate = false""").withFallback(defaultConfig)
-
-      val config = new CassandraPluginConfig(system, configWithFalseTablesAutocreate)
-      config.tablesAutoCreate must be(false)
-    }
-
-    */
     }
 }

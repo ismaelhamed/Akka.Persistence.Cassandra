@@ -1,4 +1,11 @@
-﻿using Akka.Persistence.Cassandra.Query;
+﻿//-----------------------------------------------------------------------
+// <copyright file="SequenceNumbersSpec.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using Akka.Persistence.Cassandra.Query;
 using FluentAssertions;
 using Xunit;
 using Answer = Akka.Persistence.Cassandra.Query.SequenceNumbers.Answer;

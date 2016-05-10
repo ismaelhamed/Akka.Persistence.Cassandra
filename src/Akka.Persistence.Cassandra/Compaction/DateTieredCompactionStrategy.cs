@@ -1,4 +1,11 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright file="DateTieredCompactionStrategy.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using Akka.Configuration;
@@ -35,9 +42,9 @@ namespace Akka.Persistence.Cassandra.Compaction
             if (!TimestampResolution.Equals("MICROSECONDS", StringComparison.InvariantCulture) && !TimestampResolution.Equals("MILLISECONDS", StringComparison.InvariantCulture))
                 throw new ArgumentException($"timestamp_resolution {TimestampResolution} is not valid");
 
-            AsCQL = $@"{{
+            AsCql = $@"{{
 'class' : '{DateTieredCompactionStrategyConfig.Instance.TypeName}',
-{AsCQL},
+{AsCql},
 'base_time_seconds' : {BaseTimeSeconds},
 'max_sstable_age_days' : {MaxSSTableAgeDays},
 'max_threshold' : {MaxThreshold},

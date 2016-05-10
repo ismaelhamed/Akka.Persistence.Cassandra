@@ -1,4 +1,11 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright file="LeveledCompactionStrategy.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using Akka.Configuration;
@@ -21,9 +28,9 @@ namespace Akka.Persistence.Cassandra.Compaction
             if (SSTableSizeInMb <= 0)
                 throw new ArgumentException($"sstable_size_in_mb must be greater than 0, but was {SSTableSizeInMb}");
 
-            AsCQL = $@"{{
+            AsCql = $@"{{
 'class' : '{LeveledCompactionStrategyConfig.Instance.TypeName}',
-{AsCQL},
+{AsCql},
 'sstable_size_in_mb' : {SSTableSizeInMb}
 }}";
         }

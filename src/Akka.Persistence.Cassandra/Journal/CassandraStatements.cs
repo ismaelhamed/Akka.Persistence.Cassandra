@@ -1,4 +1,11 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright file="CassandraStatements.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
@@ -55,7 +62,7 @@ CREATE TABLE IF NOT EXISTS {tableName} (
     PRIMARY KEY ((persistence_id, partition_nr), sequence_nr, timestamp, timebucket))
     WITH gc_grace_seconds ={config
                     .GcGraceSeconds}
-    AND compaction = {config.TableCompactionStrategy.AsCQL}
+    AND compaction = {config.TableCompactionStrategy.AsCql}
 ";
 
             CreateMetadataTable =

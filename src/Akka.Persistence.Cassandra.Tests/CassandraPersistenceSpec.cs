@@ -1,4 +1,11 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright file="CassandraPersistenceSpec.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using Akka.Actor;
 using Akka.Configuration;
 using Akka.TestKit;
@@ -39,8 +46,8 @@ akka.actor.serialize-messages = off
 
         protected CassandraPersistenceSpec(Config config, string actorSystemName = null, ITestOutputHelper output = null) : base(config, actorSystemName, output)
         {
-            TestSetupHelpers.ResetJournalData(Sys);
-            TestSetupHelpers.ResetSnapshotStoreData(Sys);
+            TestSetup.ResetJournalData(Sys);
+            TestSetup.ResetSnapshotStoreData(Sys);
             AwaitPersistenceInit();
         }
 
@@ -56,8 +63,8 @@ akka.actor.serialize-messages = off
 
         public static void BeforeAll(TestKitBase test)
         {
-            TestSetupHelpers.ResetJournalData(test.Sys);
-            TestSetupHelpers.ResetSnapshotStoreData(test.Sys);
+            TestSetup.ResetJournalData(test.Sys);
+            TestSetup.ResetSnapshotStoreData(test.Sys);
             AwaitPersistenceInit(test.CreateTestProbe());
         }
 

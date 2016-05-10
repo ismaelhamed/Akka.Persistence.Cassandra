@@ -1,4 +1,11 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright file="BaseCompactionStrategy.cs" company="Akka.NET Project">
+//     Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+//     Copyright (C) 2013-2016 Akka.NET project <https://github.com/akkadotnet/akka.net>
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using System.Collections.Immutable;
 using Akka.Configuration;
 
@@ -20,7 +27,7 @@ namespace Akka.Persistence.Cassandra.Compaction
             if (TombstoneThreshold <= 0)
                 throw new ArgumentException($"tombstone_threshold must be greater than 0, but was {TombstoneThreshold}");
 
-            AsCQL = $@"
+            AsCql = $@"
 'enabled' : {Enabled.ToString().ToLowerInvariant()},
 'tombstone_compaction_interval' : {TombstoneCompactionInterval},
 'tombstone_threshold' : {TombstoneThreshold},
@@ -32,7 +39,7 @@ namespace Akka.Persistence.Cassandra.Compaction
         public double TombstoneThreshold { get; }
         public bool UncheckedTombstoneCompaction { get; }
 
-        public string AsCQL { get; protected set; }
+        public string AsCql { get; protected set; }
 
         public static ICassandraCompactionStrategy FromConfig(Config config)
         {

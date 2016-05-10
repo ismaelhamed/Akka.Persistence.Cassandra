@@ -112,11 +112,13 @@
     <Compile Include="Journal\CassandraJournalProtocolV3Spec.cs" />
     <Compile Include="Journal\CassandraJournalSpec.cs" />
     <Compile Include="Journal\CassandraLoadSpec.cs" />
+    <Compile Include="Journal\CassandraSslSpec.cs" />
     <Compile Include="Journal\MultiPluginSpec.cs" />
     <Compile Include="Journal\PubSubThrottlerSpec.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Journal\StartupLoadSpec.cs" />
     <Compile Include="Query\AllPersistenceIdsSpec.cs" />
+    <Compile Include="Query\Dsl\CassandraReadJournalSpec.cs" />
     <Compile Include="Query\EventAdaptersReadSpec.cs" />
     <Compile Include="Query\EventsByPersistenceIdSpec.cs" />
     <Compile Include="Query\EventsByTagPubsubSpec.cs" />
@@ -126,13 +128,13 @@
     <Compile Include="Query\TestEventAdapter.cs" />
     <Compile Include="Snapshot\CassandraSnapshotStoreProtocolV3Spec.cs" />
     <Compile Include="Snapshot\CassandraSnapshotStoreSpec.cs" />
-    <Compile Include="TestSetupHelpers.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Akka.Persistence.Cassandra\Akka.Persistence.Cassandra.csproj">
       <Project>{54bd0b45-8a46-4194-8c33-ad287cac8fa4}</Project>
       <Name>Akka.Persistence.Cassandra</Name>
     </ProjectReference>
+    <Compile Include="TestSetup.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config">
