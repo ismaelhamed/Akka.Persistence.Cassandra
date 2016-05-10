@@ -67,7 +67,7 @@ cassandra-journal.event-adapter-bindings = {{
             ExpectMsg("a-1-done");
 
             var src = _queries.EventsByPersistenceId("a", 0L, long.MaxValue);
-            var probe = src.Map(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
             probe
                 .Request(10)
                 .ExpectNext("a");
@@ -83,7 +83,7 @@ cassandra-journal.event-adapter-bindings = {{
             ExpectMsg("b-1-done");
 
             var src = _queries.CurrentEventsByPersistenceId("b", 0L, long.MaxValue);
-            var probe = src.Map(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
             probe
                 .Request(10)
                 .ExpectNext("b");
@@ -102,7 +102,7 @@ cassandra-journal.event-adapter-bindings = {{
             ExpectMsg("b-1-done");
 
             var src = _queries.EventsByTag("a", 0L);
-            var probe = src.Map(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
             probe
                 .Request(10)
                 .ExpectNext("a")
@@ -122,7 +122,7 @@ cassandra-journal.event-adapter-bindings = {{
             ExpectMsg("b-1-done");
 
             var src = _queries.CurrentEventsByTag("a", 0L);
-            var probe = src.Map(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => env.PersistenceId).RunWith(this.SinkProbe<string>(), _materializer);
             probe
                 .Request(10)
                 .ExpectNext("a");

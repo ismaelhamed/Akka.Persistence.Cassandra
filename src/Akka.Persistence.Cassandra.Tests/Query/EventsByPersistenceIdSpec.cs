@@ -60,7 +60,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("a", 3);
 
             var src = _queries.CurrentEventsByPersistenceId("a", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
                 probe.Request(2)
                 .ExpectNext("a-1", "a-2")
                 .ExpectNoMsg(TimeSpan.FromMilliseconds(500));
@@ -75,7 +75,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("b", 10);
 
             var src = _queries.CurrentEventsByPersistenceId("b", 5L, long.MaxValue);
-            src.Map(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer)
+            src.Select(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer)
                 .Request(6)
                 .ExpectNext(5L, 6L, 7L, 8L, 9L, 10L)
                 .ExpectComplete();
@@ -87,7 +87,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("c", 3);
 
             var src = _queries.CurrentEventsByPersistenceId("c", 5L, long.MaxValue);
-            src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer)
+            src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer)
                 .Request(5)
                 .ExpectComplete();
         }
@@ -98,7 +98,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("d", 3);
 
             var src = _queries.CurrentEventsByPersistenceId("d", 0L, 2L);
-            src.Map(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer)
+            src.Select(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer)
                 .Request(5)
                 .ExpectNext(1L, 2L)
                 .ExpectComplete();
@@ -110,7 +110,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             var @ref = Setup("e", 3);
 
             var src = _queries.CurrentEventsByPersistenceId("e", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(2)
                 .ExpectNext("e-1", "e-2")
                 .ExpectNoMsg(TimeSpan.FromMilliseconds(100));
@@ -130,7 +130,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("f", 1000);
 
             var src = _queries.CurrentEventsByPersistenceId("f", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(2)
                 .ExpectNext("f-1", "f-2")
                 .ExpectNoMsg(TimeSpan.FromMilliseconds(1000));
@@ -161,7 +161,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("h", 3);
 
             var src = _queries.CurrentEventsByPersistenceId("h", 0L, long.MaxValue);
-            src.Map(env => Tuple.Create(env.PersistenceId, env.SequenceNr, env.Offset))
+            src.Select(env => Tuple.Create(env.PersistenceId, env.SequenceNr, env.Offset))
                 .RunWith(this.SinkProbe<Tuple<string, long, long>>(), _materializer)
                 .Request(3)
                 .ExpectNext(Tuple.Create("h", 1L, 1L), Tuple.Create("h", 2L, 2L), Tuple.Create("h", 3L, 3L))
@@ -174,7 +174,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("i", 20);
 
             var src = _queries.CurrentEventsByPersistenceId("i", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(10)
@@ -193,7 +193,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             var @ref = Setup("j", 3);
 
             var src = _queries.EventsByPersistenceId("j", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(5)
@@ -212,7 +212,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             var @ref = Setup("k", 4);
 
             var src = _queries.EventsByPersistenceId("k", 5L, long.MaxValue);
-            var probe = src.Map(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer);
+            var probe = src.Select(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer);
 
             probe
                 .Request(5)
@@ -237,7 +237,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             var @ref = Setup("l", 3);
 
             var src = _queries.EventsByPersistenceId("l", 0L, 4L);
-            var probe = src.Map(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer);
+            var probe = src.Select(env => env.SequenceNr).RunWith(this.SinkProbe<long>(), _materializer);
 
             probe
                 .Request(5)
@@ -257,7 +257,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             var @ref = Setup("m", 3);
 
             var src = _queries.EventsByPersistenceId("m", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(2)
@@ -280,7 +280,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("n", 1000);
 
             var src = _queries.EventsByPersistenceId("n", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(2)
@@ -304,7 +304,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("o2", 1); // Database init.
 
             var src = _queries.EventsByPersistenceId("o", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(10)
@@ -317,7 +317,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("p2", 1); // Database init.
 
             var src = _queries.EventsByPersistenceId("p", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(2)
@@ -336,7 +336,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             var @ref = Setup("q", 15);
 
             var src = _queries.EventsByPersistenceId("q", 0L, long.MaxValue);
-            var probe = src.Map(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(env => (string) env.Event).RunWith(this.SinkProbe<string>(), _materializer);
 
             probe
                 .Request(16)

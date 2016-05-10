@@ -9,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Reactive.Streams;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web;
@@ -164,7 +163,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// because order is not defined and new 'persistenceId's may appear anywhere in the query results.
         /// </para>
         /// </summary>
-        public Source<string, Unit> AllPersistenceIds() => PersistenceIds(_queryPluginConfig.RefreshInterval, "allPersistenceIds");
+        public Source<string, NotUsed> AllPersistenceIds() => PersistenceIds(_queryPluginConfig.RefreshInterval, "allPersistenceIds");
 
 
         /// <summary>
@@ -172,7 +171,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// is completed immediately when it reaches the end of the "result set". Events that are
         /// stored after the query is completed are not included in the event stream.
         /// </summary>
-        public Source<string, Unit> CurrentPersistenceIds() => PersistenceIds(null, "currentPersistenceIds");
+        public Source<string, NotUsed> CurrentPersistenceIds() => PersistenceIds(null, "currentPersistenceIds");
 
         /// <summary>
         /// <para>
@@ -204,12 +203,12 @@ namespace Akka.Persistence.Cassandra.Query
         /// stored events is provided by 'currentEventsByPersistenceId'.
         /// </para>
         /// </summary>
-        public Source<EventEnvelope, Unit> EventsByPersistenceId(string persistenceId, long fromSequenceNr, long toSequenceNr)
+        public Source<EventEnvelope, NotUsed> EventsByPersistenceId(string persistenceId, long fromSequenceNr, long toSequenceNr)
         {
             return
                 EventsByPersistenceId(persistenceId, fromSequenceNr, toSequenceNr, long.MaxValue,
                     _queryPluginConfig.FetchSize, _queryPluginConfig.RefreshInterval,
-                    $"eventsByPersistenceId-{persistenceId}").MapConcat(r => ToEventEnvelopes(r, r.SequenceNr));
+                    $"eventsByPersistenceId-{persistenceId}").SelectMany(r => ToEventEnvelopes(r, r.SequenceNr));
         }
 
         /// <summary>
@@ -217,13 +216,13 @@ namespace Akka.Persistence.Cassandra.Query
         /// is completed immediately when it reaches the end of the "result set". Events that
         /// are stored after the query is completed are not included in the event stream.
         /// </summary>
-        public Source<EventEnvelope, Unit> CurrentEventsByPersistenceId(string persistenceId, long fromSequenceNr,
+        public Source<EventEnvelope, NotUsed> CurrentEventsByPersistenceId(string persistenceId, long fromSequenceNr,
             long toSequenceNr)
         {
             return
                 EventsByPersistenceId(persistenceId, fromSequenceNr, toSequenceNr, long.MaxValue,
                     _queryPluginConfig.FetchSize, null, $"currentEventsByPersistenceId-{persistenceId}")
-                    .MapConcat(r => ToEventEnvelopes(r, r.SequenceNr));
+                    .SelectMany(r => ToEventEnvelopes(r, r.SequenceNr));
         }
 
         /// <summary>
@@ -295,10 +294,10 @@ namespace Akka.Persistence.Cassandra.Query
         /// backend journal.
         /// </para>
         /// </summary>
-        public Source<EventEnvelope, Unit> EventsByTag(string tag, long offset)
+        public Source<EventEnvelope, NotUsed> EventsByTag(string tag, long offset)
         {
             return EventsByTag(tag, OffsetGuid(offset))
-                .Map(
+                .Select(
                     envelope =>
                         new EventEnvelope(((TimeUuid) envelope.Offset).GetDate().Ticks, envelope.PersistenceId,
                             envelope.SequenceNr, envelope.Event));
@@ -321,7 +320,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// <param name="tag"></param>
         /// <param name="offset"></param>
         /// <returns></returns>
-        public Source<GuidEventEnvelope, Unit> EventsByTag(string tag, Guid offset)
+        public Source<GuidEventEnvelope, NotUsed> EventsByTag(string tag, Guid offset)
         {
             try
             {
@@ -332,10 +331,10 @@ namespace Akka.Persistence.Cassandra.Query
 
                     return CreateSource(SelectStatement(tag), (s, ps) =>
                     {
-                        return (Source<GuidEventEnvelope, Unit>)Source.ActorPublisher<GuidPersistent>(EventsByTagPublisher.Props(tag, offset,
+                        return (Source<GuidEventEnvelope, NotUsed>)Source.ActorPublisher<GuidPersistent>(EventsByTagPublisher.Props(tag, offset,
                             Option<TimeUuid>.None, _queryPluginConfig, s, ps))
-                            .MapConcat(r => ToGuidEventEnvelopes(r.Persistent, r.Offset))
-                            .MapMaterializedValue(_ => Unit.Instance)
+                            .SelectMany(r => ToGuidEventEnvelopes(r.Persistent, r.Offset))
+                            .MapMaterializedValue(_ => NotUsed.Instance)
                             .Named("eventsByTag-" + HttpUtility.UrlEncode(tag, Encoding.UTF8))
                             .WithAttributes(ActorAttributes.CreateDispatcher(_queryPluginConfig.PluginDispatcher));
                     });
@@ -362,11 +361,11 @@ namespace Akka.Persistence.Cassandra.Query
         /// will be included in the returned stream.
         /// </para>
         /// </summary>
-        public Source<EventEnvelope, Unit> CurrentEventsByTag(string tag, long offset)
+        public Source<EventEnvelope, NotUsed> CurrentEventsByTag(string tag, long offset)
         {
             
             return CurrentEventsByTag(tag, OffsetGuid(offset))
-                .Map(
+                .Select(
                     envelope =>
                         new EventEnvelope(((TimeUuid) envelope.Offset).GetDate().Ticks, envelope.PersistenceId,
                             envelope.SequenceNr, envelope.Event));
@@ -386,7 +385,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// in the returned stream.
         /// </para>
         /// </summary>
-        public Source<GuidEventEnvelope, Unit> CurrentEventsByTag(string tag, Guid offset)
+        public Source<GuidEventEnvelope, NotUsed> CurrentEventsByTag(string tag, Guid offset)
         {
             try
             {
@@ -398,10 +397,10 @@ namespace Akka.Persistence.Cassandra.Query
                     var toOffset = OffsetGuid(DateTime.UtcNow.Ticks);
                     return CreateSource(SelectStatement(tag), (s, ps) =>
                     {
-                        return (Source<GuidEventEnvelope, Unit>)Source.ActorPublisher<GuidPersistent>(EventsByTagPublisher.Props(tag, offset,
+                        return (Source<GuidEventEnvelope, NotUsed>)Source.ActorPublisher<GuidPersistent>(EventsByTagPublisher.Props(tag, offset,
                             new Option<TimeUuid>(toOffset), _queryPluginConfig, s, ps))
-                            .MapConcat(r => ToGuidEventEnvelopes(r.Persistent, r.Offset))
-                            .MapMaterializedValue(_ => Unit.Instance)
+                            .SelectMany(r => ToGuidEventEnvelopes(r.Persistent, r.Offset))
+                            .MapMaterializedValue(_ => NotUsed.Instance)
                             .Named("currentEventsByTag-" + HttpUtility.UrlEncode(tag, Encoding.UTF8))
                             .WithAttributes(ActorAttributes.CreateDispatcher(_queryPluginConfig.PluginDispatcher));
                     });
@@ -429,7 +428,7 @@ namespace Akka.Persistence.Cassandra.Query
         /// </list>
         /// </para>
         /// </summary>
-        internal Source<Persistent, Unit> EventsByPersistenceId(string persistenceId, long fromSequenceNr,
+        internal Source<Persistent, NotUsed> EventsByPersistenceId(string persistenceId, long fromSequenceNr,
             long toSequenceNr, long max, int pageSize, TimeSpan? refreshInterval, string name,
             ConsistencyLevel? customConsistencyLevel = null)
         {
@@ -437,7 +436,7 @@ namespace Akka.Persistence.Cassandra.Query
                 CreateSource(
                     _combinedEventsByPersistentIdStatements.Value,
                     (s, c) =>
-                        (Source<Persistent, Unit>) Source.ActorPublisher<Persistent>(
+                        (Source<Persistent, NotUsed>) Source.ActorPublisher<Persistent>(
                             EventsByPersistenceIdPublisher.Props(
                                 persistenceId,
                                 fromSequenceNr,
@@ -456,17 +455,17 @@ namespace Akka.Persistence.Cassandra.Query
                                 )
                             )
                             .WithAttributes(ActorAttributes.CreateDispatcher(_queryPluginConfig.PluginDispatcher))
-                            .MapMaterializedValue(_ => Unit.Instance)
+                            .MapMaterializedValue(_ => NotUsed.Instance)
                             .Named(name));
         }
 
-        private Source<string, Unit> PersistenceIds(TimeSpan? refreshInterval, string name)
+        private Source<string, NotUsed> PersistenceIds(TimeSpan? refreshInterval, string name)
         {
             return
                 CreateSource(
                     _preparedSelectDistinctPersistenceIds.Value,
                     (s, ps) =>
-                        (Source<string, Unit>) Source.ActorPublisher<string>(
+                        (Source<string, NotUsed>) Source.ActorPublisher<string>(
                             AllPersistenceIdsPublisher.Props(
                                 refreshInterval,
                                 new AllPersistenceIdsSession(ps, s),
@@ -474,7 +473,7 @@ namespace Akka.Persistence.Cassandra.Query
                                 )
                             )
                             .WithAttributes(ActorAttributes.CreateDispatcher(_queryPluginConfig.PluginDispatcher))
-                            .MapMaterializedValue(_ => Unit.Instance)
+                            .MapMaterializedValue(_ => NotUsed.Instance)
                             .Named(name));
         }
 
@@ -498,8 +497,8 @@ namespace Akka.Persistence.Cassandra.Query
                     .OnRanToCompletion(ps => ps.SetConsistencyLevel(_queryPluginConfig.ReadConsistency));
         }
 
-        private Source<T, Unit> CreateSource<T, TStatement>(Task<TStatement> preparedStatement,
-            Func<ISession, TStatement, Source<T, Unit>> source)
+        private Source<T, NotUsed> CreateSource<T, TStatement>(Task<TStatement> preparedStatement,
+            Func<ISession, TStatement, Source<T, NotUsed>> source)
         {
             if (preparedStatement.IsCompleted)
             {
@@ -527,9 +526,9 @@ namespace Akka.Persistence.Cassandra.Query
                                 else
                                     promise.SetResult(t.Result);
                             });
-                        return Unit.Instance;
+                        return NotUsed.Instance;
                     })
-                    .FlatMapConcat(ps => source(GetSession(), ps));
+                    .ConcatMany(ps => source(GetSession(), ps));
             }
         }
 

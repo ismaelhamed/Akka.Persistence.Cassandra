@@ -82,7 +82,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("a", 6, i => i%2 == 0 ? "dropped:" : "");
 
             var src = _queries.CurrentEventsByPersistenceId("a", 0L, long.MaxValue);
-            var probe = src.Map(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(2)
                 .ExpectNext("a-1", "a-3")
                 .ExpectNoMsg(TimeSpan.FromMilliseconds(500));
@@ -97,7 +97,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("b", 3, i => i%2 == 0 ? "duplicated:" : "");
 
             var src = _queries.CurrentEventsByPersistenceId("b", 0L, long.MaxValue);
-            var probe = src.Map(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(10)
                 .ExpectNext("b-1", "b-2", "b-2", "b-3")
                 .ExpectComplete();
@@ -109,7 +109,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("c", 1, _ => "prefixed:foo:");
 
             var src = _queries.CurrentEventsByPersistenceId("c", 0L, long.MaxValue);
-            var probe = src.Map(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(10)
                 .ExpectNext("foo-c-1")
                 .ExpectComplete();
@@ -121,7 +121,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("d", 6, Tagged("red", i => i%2 == 0 ? "dropped:" : ""));
 
             var src = _queries.CurrentEventsByTag("red", 0L);
-            var probe = src.Map(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(10)
                 .ExpectNext("d-1", "d-3", "d-5")
                 .ExpectComplete();
@@ -133,7 +133,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("e", 3, Tagged("yellow", i => i%2 == 0 ? "duplicated:" : ""));
 
             var src = _queries.CurrentEventsByTag("yellow", 0L);
-            var probe = src.Map(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(10)
                 .ExpectNext("e-1", "e-2", "e-2", "e-3")
                 .ExpectComplete();
@@ -145,7 +145,7 @@ namespace Akka.Persistence.Cassandra.Tests.Query
             Setup("f", 3, Tagged("green", i => i%2 == 0 ? "prefixed:foo:" : ""));
 
             var src = _queries.CurrentEventsByTag("green", 0L);
-            var probe = src.Map(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
+            var probe = src.Select(e => (string) e.Event).RunWith(this.SinkProbe<string>(), _materializer);
             probe.Request(10)
                 .ExpectNext("f-1", "foo-f-2", "f-3")
                 .ExpectComplete();
