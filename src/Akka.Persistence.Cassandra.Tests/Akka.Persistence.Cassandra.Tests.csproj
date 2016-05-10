@@ -103,6 +103,7 @@
     <Compile Include="Await.cs" />
     <Compile Include="CassandraConfig.cs" />
     <Compile Include="CassandraPersistenceSpec.cs" />
+    <Compile Include="CassandraPluginConfigTest.cs" />
     <Compile Include="Compaction\CassandraCompactionStrategySpec.cs" />
     <Compile Include="Journal\CassandraConfigCheckerSpec.cs" />
     <Compile Include="Journal\CassandraIntegrationSpec.cs" />

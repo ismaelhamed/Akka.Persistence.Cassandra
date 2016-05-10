@@ -15,7 +15,7 @@ namespace Akka.Persistence.Cassandra
     public class CassandraPluginConfig
     {
         private static readonly Regex KeyspaceAndTableNameRegex =
-            new Regex("^(\"[a-zA-Z]{1}[\\w]{0,31}\"|[a-zA-Z]{1}[\\w]{0,31})$");
+            new Regex("^(\"[a-zA-Z]{1}[\\w]{0,47}\"|[a-zA-Z]{1}[\\w]{0,47})$");
 
         public CassandraPluginConfig(ActorSystem system, Config config)
         {
@@ -122,7 +122,7 @@ namespace Akka.Persistence.Cassandra
         // TODO FIXME temporary until we have fixed all blocking
         internal TimeSpan BlockingTimeout { get; } = TimeSpan.FromSeconds(10);
 
-        private static string GetReplicationStrategy(string strategy, int replicationFactor,
+        public static string GetReplicationStrategy(string strategy, int replicationFactor,
             ICollection<string> dataCenterReplicationFactors)
         {
             switch (strategy.ToLowerInvariant())
@@ -196,7 +196,7 @@ namespace Akka.Persistence.Cassandra
             if (KeyspaceAndTableNameRegex.IsMatch(keyspaceName))
                 return keyspaceName;
             throw new ArgumentException(
-                $"Invalid keyspace name. A keyspace name may contain 32 or fewer alphanumeric charachters and underscores. Value was: {keyspaceName}");
+                $"Invalid keyspace name. A keyspace name may contain 48 or fewer alphanumeric charachters and underscores. Value was: {keyspaceName}");
         }
 
         /// <summary>
@@ -210,7 +210,7 @@ namespace Akka.Persistence.Cassandra
             if (KeyspaceAndTableNameRegex.IsMatch(tableName))
                 return tableName;
             throw new ArgumentException(
-                $"Invalid table name. A table name may contain 32 or fewer alphanumeric charachters and underscores. Value was: {tableName}");
+                $"Invalid table name. A table name may contain 48 or fewer alphanumeric charachters and underscores. Value was: {tableName}");
         }
     }
 }

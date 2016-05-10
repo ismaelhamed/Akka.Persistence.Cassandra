@@ -101,7 +101,7 @@ namespace Akka.Persistence.Cassandra
             return builder;
         }
 
-        protected virtual Task<IPEndPoint[]> LookupContactPoints(string clusterId)
+        public virtual Task<IPEndPoint[]> LookupContactPoints(string clusterId)
         {
             var port = _config.GetInt("port");
             var contactPoints = _config.GetStringList("contact-points");
