@@ -40,12 +40,12 @@ namespace Akka.Persistence.Cassandra.Query
 
         protected override Task<IAction> InitialQuery(AllPersistenceIdsState initialState)
         {
-            return Query(initialState);
+            return Query();
         }
 
         protected override Task<IAction> RequestNext(AllPersistenceIdsState state, RowSet resultSet)
         {
-            return Query(state);
+            return Query();
         }
 
         protected override Task<IAction> RequestNextFinished(AllPersistenceIdsState state, RowSet resultSet)
@@ -71,13 +71,13 @@ namespace Akka.Persistence.Cassandra.Query
             return false;
         }
 
-        private Task<IAction> Query(AllPersistenceIdsState state)
+        private async Task<IAction> Query()
         {
             var boundStatement = Session.SelectDistinctPersistenceIds.Bind();
             boundStatement.SetPageSize(Config.FetchSize);
 
-            return Session.Session.ExecuteAsync(boundStatement)
-                .OnRanToCompletion(rs => (IAction) new Finished(rs));
+            var resultSet = await Session.Session.ExecuteAsync(boundStatement);
+            return new Finished(resultSet);
         }
     }
 

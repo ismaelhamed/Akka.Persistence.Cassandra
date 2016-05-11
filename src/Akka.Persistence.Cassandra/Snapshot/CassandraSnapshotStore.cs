@@ -51,30 +51,19 @@ namespace Akka.Persistence.Cassandra.Snapshot
                 session => statements.ExecuteCreateKeyspaceAndTables(session, _config));
 
             _preparedWriteSnapshot =
-                new Lazy<Task<PreparedStatement>>(
-                    () =>
-                        _session.Prepare(statements.WriteSnapshot)
-                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.WriteConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.WriteSnapshot, _config.WriteConsistency));
             _preparedDeleteSnapshot =
-                new Lazy<Task<PreparedStatement>>(
-                    () =>
-                        _session.Prepare(statements.DeleteSnapshot)
-                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.WriteConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.DeleteSnapshot, _config.WriteConsistency));
             _preparedSelectSnapshot =
-                new Lazy<Task<PreparedStatement>>(
-                    () =>
-                        _session.Prepare(statements.SelectSnapshot)
-                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.SelectSnapshot, _config.ReadConsistency));
             _preparedSelectSnapshotMetadataForLoad =
                 new Lazy<Task<PreparedStatement>>(
                     () =>
-                        _session.Prepare(statements.SelectSnapshotMetadata(_config.MaxMetadataResultSize))
-                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
+                        Prepare(statements.SelectSnapshotMetadata(_config.MaxMetadataResultSize),
+                            _config.ReadConsistency));
             _preparedSelectSnapshotMetadataForDelete =
                 new Lazy<Task<PreparedStatement>>(
-                    () =>
-                        _session.Prepare(statements.SelectSnapshotMetadata())
-                            .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
+                    () => Prepare(statements.SelectSnapshotMetadata(), _config.ReadConsistency));
 
             var address = ((ExtendedActorSystem) Context.System).Provider.DefaultAddress;
             _transportInformation =
@@ -83,6 +72,13 @@ namespace Akka.Persistence.Cassandra.Snapshot
                         !string.IsNullOrEmpty(address.Host)
                             ? new Information {Address = address, System = Context.System}
                             : null);
+        }
+
+
+        private async Task<PreparedStatement> Prepare(string statement, ConsistencyLevel consistencyLevel)
+        {
+            var preparedStatement = await _session.Prepare(statement);
+            return preparedStatement.SetConsistencyLevel(consistencyLevel);
         }
 
         protected override void PreStart()

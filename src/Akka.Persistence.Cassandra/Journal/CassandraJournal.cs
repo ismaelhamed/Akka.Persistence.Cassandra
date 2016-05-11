@@ -161,27 +161,21 @@ namespace Akka.Persistence.Cassandra.Journal
 
             var statements = new CassandraStatements(_config);
             _session = new CassandraSession(Context.System, _config, _log, Self.Path.Name,
-                session => statements.ExecuteCreateKeyspaceAndTables(session, _config, _config.MaxTagId)
-                    .OnRanToCompletion(() => statements.InitializePersistentConfig(session)).Unwrap());
+                session => InitSession(session, statements));
 
-            _preparedWriteMessage = new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.WriteMessage));
-            _preparedDeleteMessages = new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.DeleteMessages));
+            _preparedWriteMessage = new Lazy<Task<PreparedStatement>>(() => Prepare(statements.WriteMessage));
+            _preparedDeleteMessages = new Lazy<Task<PreparedStatement>>(() => Prepare(statements.DeleteMessages));
             _preparedSelectMessages =
-                new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.SelectMessages)
-                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.SelectMessages, _config.ReadConsistency));
             _preparedCheckInUse =
-                new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.SelectInUse)
-                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
-            _preparedWriteInUse = new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.WriteInUse));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.SelectInUse, _config.ReadConsistency));
+            _preparedWriteInUse = new Lazy<Task<PreparedStatement>>(() => Prepare(statements.WriteInUse));
             _preparedSelectHighestSequenceNr =
-                new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.SelectHighestSequenceNr)
-                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.SelectHighestSequenceNr, _config.ReadConsistency));
             _preparedSelectDeletedTo =
-                new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.SelectDeletedTo)
-                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.ReadConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.SelectDeletedTo, _config.ReadConsistency));
             _preparedInsertDeletedTo =
-                new Lazy<Task<PreparedStatement>>(() => _session.Prepare(statements.InsertDeletedTo)
-                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_config.WriteConsistency)));
+                new Lazy<Task<PreparedStatement>>(() => Prepare(statements.InsertDeletedTo, _config.WriteConsistency));
 
             _writeRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(_config.WriteRetries));
             _deleteRetryPolicy = new LoggingRetryPolicy(new FixedRetryPolicy(_config.DeleteRetries));
@@ -197,7 +191,21 @@ namespace Akka.Persistence.Cassandra.Journal
             _materializer = ActorMaterializer.Create(Context);
             _queries = PersistenceQuery.Get(Context.System).ReadJournalFor<CassandraReadJournal>(_config.QueryPlugin);
         }
-        
+
+        private async Task InitSession(ISession session, CassandraStatements statements)
+        {
+            await statements.ExecuteCreateKeyspaceAndTables(session, _config, _config.MaxTagId);
+            await statements.InitializePersistentConfig(session);
+        }
+
+        private async Task<PreparedStatement> Prepare(string statement, ConsistencyLevel? consistencyLevel = null)
+        {
+            var preparedStatement = await _session.Prepare(statement);
+            return consistencyLevel.HasValue
+                ? preparedStatement.SetConsistencyLevel(consistencyLevel.Value)
+                : preparedStatement;
+        }
+
         protected override void PreStart()
         {
             // eager initialization, but not from constructor
@@ -282,7 +290,8 @@ namespace Akka.Persistence.Cassandra.Journal
                     var position = 0;
                     while (position < serialized.Count)
                     {
-                        await WriteMessages(serialized.Skip(position).Take(_config.MaxMessageBatchSize).ToList());
+                        result = WriteMessages(serialized.Skip(position).Take(_config.MaxMessageBatchSize).ToList());
+                        await result;
                         position += _config.MaxMessageBatchSize;
                     }
                 }
@@ -292,9 +301,10 @@ namespace Akka.Persistence.Cassandra.Journal
             {
                 self.Tell(new WriteFinished(persistenceId, promise.Task));
                 promise.SetResult(new object());
+
+                PublishTagNotification(serialized, result);
             }
 
-            PublishTagNotification(serialized, result);
             // null == all good
             return null;
         }
@@ -317,14 +327,13 @@ namespace Akka.Persistence.Cassandra.Journal
         {
             if (_pubsub != null)
             {
-                result
-                    .OnRanToCompletion(() =>
+                result.ContinueWith(_ =>
+                {
+                    foreach (var tag in serialized.SelectMany(s => s.Payload.SelectMany(p => p.Tags)).Distinct())
                     {
-                        foreach (var tag in serialized.SelectMany(s => s.Payload.SelectMany(p => p.Tags)).Distinct())
-                        {
-                            _pubsub.Tell(new Publish("akka.persistence.cassandra.journal.tag", tag));
-                        }
-                    });
+                        _pubsub.Tell(new Publish("akka.persistence.cassandra.journal.tag", tag));
+                    }
+                }, TaskContinuationOptions.OnlyOnRanToCompletion);
             }
         }
 
@@ -459,7 +468,7 @@ namespace Akka.Persistence.Cassandra.Journal
                         var delete = DeleteMessagesCassandra2XAsync(persistenceId, partitionInfo.PartitionNr, fromSeqNr,
                             toSeqNr);
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                        delete.OnFaultedOrCanceled(t =>
+                        delete.ContinueWith(t =>
                         {
                             if (_log.IsWarningEnabled)
                                 _log.Warning(
@@ -467,7 +476,7 @@ namespace Akka.Persistence.Cassandra.Journal
                                     "The plugin will continue to function correctly but you will need to manually delete the old messages.",
                                     t.IsFaulted ? t.Exception.Unwrap() : new OperationCanceledException());
 
-                        });
+                        }, TaskContinuationOptions.NotOnRanToCompletion);
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                         fromSeqNr = toSeqNr + 1;
                     }
@@ -485,15 +494,14 @@ namespace Akka.Persistence.Cassandra.Journal
                 });
                 var all = Task.WhenAll(deletes);
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                all.OnFaultedOrCanceled(t =>
+                all.ContinueWith(t =>
                 {
                     if (_log.IsWarningEnabled)
                         _log.Warning(
                             $"Unable to complete deletes for persistence id {persistenceId}, toSequenceNr ${toSequenceNr}." +
                             "The plugin will continue to function correctly but you will need to manually delete the old messages.",
                             t.IsFaulted ? t.Exception.Unwrap() : new OperationCanceledException());
-
-                });
+                }, TaskContinuationOptions.NotOnRanToCompletion);
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
             }
         }

@@ -151,29 +151,26 @@ namespace Akka.Persistence.Cassandra.Query
 
         protected override void PreStart()
         {
-            InitialState()
-                .OnRanToCompletion(state =>
-                {
-                    return InitialQuery(state)
-                        .OnRanToCompletion<IAction, IInitialAction>(result =>
-                        {
-                            if (result is NewResultSet)
-                            {
-                                return new InitialNewResultSet(state, ((NewResultSet) result).ResultSet);
-                            }
-                            if (result is FetchedResultSet)
-                            {
-                                return new InitialNewResultSet(state, ((FetchedResultSet) result).ResultSet);
-                            }
-                            if (result is Finished)
-                            {
-                                return new InitialFinished(state, ((Finished) result).ResultSet);
-                            }
-                            throw new ApplicationException("Should never happen");
-                        });
-                })
-                .Unwrap()
-                .PipeTo(Self);
+            RunInitialQuery().PipeTo(Self);
+        }
+
+        private async Task<IInitialAction> RunInitialQuery()
+        {
+            var initialState = await InitialState();
+            var action = await InitialQuery(initialState);
+            if (action is NewResultSet)
+            {
+                return new InitialNewResultSet(initialState, ((NewResultSet) action).ResultSet);
+            }
+            if (action is FetchedResultSet)
+            {
+                return new InitialNewResultSet(initialState, ((FetchedResultSet) action).ResultSet);
+            }
+            if (action is Finished)
+            {
+                return new InitialFinished(initialState, ((Finished) action).ResultSet);
+            }
+            throw new ApplicationException("Should never happen");
         }
 
         private Receive Starting()
@@ -277,9 +274,7 @@ namespace Akka.Persistence.Cassandra.Query
 
             if (ShouldFetchMore(availableWithoutFetching, isFullyFetched, state))
             {
-                resultSet.FetchMoreResultsAsync()
-                    .OnRanToCompletion(() => new FetchedResultSet(resultSet))
-                    .PipeTo(Self);
+                FetchMoreResults(resultSet).PipeTo(Self);
                 return Awaiting(resultSet, state, finished);
             }
 
@@ -300,6 +295,12 @@ namespace Akka.Persistence.Cassandra.Query
                 return Awaiting(resultSet, state, finished);
             }
             return Idle(resultSet, state, finished);
+        }
+
+        private static async Task<FetchedResultSet> FetchMoreResults(RowSet resultSet)
+        {
+            await resultSet.FetchMoreResultsAsync();
+            return new FetchedResultSet(resultSet);
         }
 
         private bool ShouldIdle(int availableWithoutFetching, TState state)

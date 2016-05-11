@@ -78,7 +78,7 @@ namespace Akka.Persistence.Cassandra
         public void Close()
         {
             var existing = _underlyingSession.GetAndSet(null);
-            existing?.OnRanToCompletion(s => s.Dispose());
+            existing?.ContinueWith(t => t.Result.Dispose(), TaskContinuationOptions.OnlyOnRanToCompletion);
         }
 
         private Task<ISession> Setup()
@@ -94,21 +94,21 @@ namespace Akka.Persistence.Cassandra
                     //  CassandraMetricsRegistry(system).addMetrics(metricsCategory, ses.getCluster.getMetrics.getRegistry)
                     //}
 
-                    session.OnFaultedOrCanceled(t =>
+                    session.ContinueWith(t =>
                     {
                         _underlyingSession.CompareAndSet(session, null);
                         _log.Warning(
                             $"Failed to connect to Cassandra and initialize. It will be retried on demand. Caused by: {(t.IsFaulted ? t.Exception.Unwrap().Message : "task cancellation")}");
-                    });
+                    }, TaskContinuationOptions.NotOnRanToCompletion);
                     _system.RegisterOnTermination(() =>
                     {
-                        session.OnRanToCompletion(s => s.Dispose());
+                        session.ContinueWith(t => t.Result.Dispose(), TaskContinuationOptions.OnlyOnRanToCompletion);
                     });
                     existing = session;
                 }
                 else
                 {
-                    session.OnRanToCompletion(s => s.Dispose());
+                    session.ContinueWith(t => t.Result.Dispose(), TaskContinuationOptions.OnlyOnRanToCompletion);
                     existing = _underlyingSession.Value;
                 }
             }
@@ -173,7 +173,7 @@ namespace Akka.Persistence.Cassandra
             }
         }
 
-        private void Close(ISession session)
+        private static void Close(ISession session)
         {
             session.Dispose();
             session.Cluster.Dispose();

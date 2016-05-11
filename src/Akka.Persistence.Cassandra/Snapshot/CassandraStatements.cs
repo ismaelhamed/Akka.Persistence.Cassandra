@@ -95,17 +95,13 @@ SELECT persistence_id, sequence_nr, timestamp FROM {tableName} WHERE
                 );
         }
 
-        private Task CreateKeySpaceAndTables(ISession session, CassandraSnapshotStoreConfig config)
+        private async Task CreateKeySpaceAndTables(ISession session, CassandraSnapshotStoreConfig config)
         {
-            var keyspaceTask = config.KeyspaceAutocreate
-                ? (Task) session.ExecuteAsync(new SimpleStatement(CreateKeyspace))
-                : Task.FromResult(new object());
+            if (config.KeyspaceAutocreate)
+                await session.ExecuteAsync(new SimpleStatement(CreateKeyspace));
 
             if (config.TablesAutocreate)
-                return keyspaceTask
-                    .OnRanToCompletion(() => session.ExecuteAsync(new SimpleStatement(CreateTable)))
-                    .Unwrap();
-            return keyspaceTask;
+                await session.ExecuteAsync(new SimpleStatement(CreateTable));
         }
     }
 }

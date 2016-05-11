@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence.Cassandra.Journal;
@@ -53,6 +54,17 @@ namespace Akka.Persistence.Cassandra.Query
                     .WithDispatcher(settings.PluginDispatcher);
         }
 
+        private readonly string _tag;
+        private readonly TimeBucket _timeBucket;
+        private readonly TimeUuid _fromOffset;
+        private readonly TimeUuid _toOffset;
+        private readonly int _limit;
+        private readonly bool _backtracking;
+        private readonly IActorRef _replyTo;
+        private readonly ISession _session;
+        private readonly PreparedStatement _preparedSelect;
+        private readonly CassandraReadJournalConfig _settings;
+
         private static readonly IComparer<Guid> GuidComparer = new GuidComparer();
         private readonly Akka.Serialization.Serialization _serialization;
         private Guid _highestOffset;
@@ -64,17 +76,17 @@ namespace Akka.Persistence.Cassandra.Query
             bool backtracking, IActorRef replyTo, ISession session, PreparedStatement preparedSelect,
             Option<SequenceNumbers> sequenceNumbers, CassandraReadJournalConfig settings)
         {
-            Tag = tag;
-            TimeBucket = timeBucket;
-            FromOffset = fromOffset;
-            ToOffset = toOffset;
-            Limit = limit;
-            Backtracking = backtracking;
-            ReplyTo = replyTo;
-            Session = session;
-            PreparedSelect = preparedSelect;
-            Numbers = sequenceNumbers;
-            Settings = settings;
+            _tag = tag;
+            _timeBucket = timeBucket;
+            _fromOffset = fromOffset;
+            _toOffset = toOffset;
+            _limit = limit;
+            _backtracking = backtracking;
+            _replyTo = replyTo;
+            _session = session;
+            _preparedSelect = preparedSelect;
+            _sequenceNumbers = sequenceNumbers;
+            _settings = settings;
 
             _serialization = Context.System.Serialization;
             _highestOffset = fromOffset;
@@ -82,26 +94,18 @@ namespace Akka.Persistence.Cassandra.Query
             _sequenceNumbers = sequenceNumbers;
         }
 
-        public string Tag { get; }
-        public TimeBucket TimeBucket { get; }
-        public TimeUuid FromOffset { get; }
-        public TimeUuid ToOffset { get; }
-        public int Limit { get; }
-        public bool Backtracking { get; }
-        public IActorRef ReplyTo { get; }
-        public ISession Session { get; }
-        public PreparedStatement PreparedSelect { get; }
-        public Option<SequenceNumbers> Numbers { get; }
-        public CassandraReadJournalConfig Settings { get; }
 
         protected override void PreStart()
         {
-            var boundStatement = PreparedSelect.Bind(Tag, TimeBucket.Key, FromOffset, ToOffset, Limit);
-            boundStatement.SetPageSize(Settings.FetchSize);
-            var init = Session.ExecuteAsync(boundStatement);
-            init
-                .OnRanToCompletion(rs => new InitResultSet(rs))
-                .PipeTo(Self);
+            var boundStatement = _preparedSelect.Bind(_tag, _timeBucket.Key, _fromOffset, _toOffset, _limit);
+            boundStatement.SetPageSize(_settings.FetchSize);
+            FetchInitialResultSet(boundStatement).PipeTo(Self);
+        }
+
+        private async Task<InitResultSet> FetchInitialResultSet(BoundStatement boundStatement)
+        {
+            var resultSet = await _session.ExecuteAsync(boundStatement);
+            return new InitResultSet(resultSet);
         }
 
         protected override bool Receive(object message)
@@ -143,7 +147,7 @@ namespace Akka.Persistence.Cassandra.Query
         {
             if (resultSet.IsExhausted())
             {
-                ReplyTo.Tell(new EventsByTagPublisher.ReplayDone(_count, _sequenceNumbers, _highestOffset));
+                _replyTo.Tell(new EventsByTagPublisher.ReplayDone(_count, _sequenceNumbers, _highestOffset));
                 Context.Stop(Self);
             }
             else
@@ -153,10 +157,7 @@ namespace Akka.Persistence.Cassandra.Query
                 {
                     if (n == 0)
                     {
-                        var more = resultSet.FetchMoreResultsAsync();
-                        more
-                            .OnRanToCompletion(() => Fetched.Instance)
-                            .PipeTo(Self);
+                        FetchMoreResults(resultSet).PipeTo(Self);
                         break;
                     }
 
@@ -177,7 +178,7 @@ namespace Akka.Persistence.Cassandra.Query
 
                     if (!_sequenceNumbers.HasValue)
                     {
-                        ReplyTo.Tell(new GuidPersistent(offset, ToPersistent(row, persistenceId, sequenceNr)));
+                        _replyTo.Tell(new GuidPersistent(offset, ToPersistent(row, persistenceId, sequenceNr)));
                         n -= 1;
                     }
                     else
@@ -189,18 +190,18 @@ namespace Akka.Persistence.Cassandra.Query
                             case SequenceNumbers.Answer.Yes:
                             case SequenceNumbers.Answer.PossiblyFirst:
                                 _sequenceNumbers = s.Updated(persistenceId, sequenceNr);
-                                ReplyTo.Tell(new GuidPersistent(offset, ToPersistent(row, persistenceId, sequenceNr)));
+                                _replyTo.Tell(new GuidPersistent(offset, ToPersistent(row, persistenceId, sequenceNr)));
                                 n -= 1;
                                 break;
                             case SequenceNumbers.Answer.After:
-                                ReplyTo.Tell(new EventsByTagPublisher.ReplayAborted(_sequenceNumbers, persistenceId,
+                                _replyTo.Tell(new EventsByTagPublisher.ReplayAborted(_sequenceNumbers, persistenceId,
                                     s.Get(persistenceId) + 1, sequenceNr));
                                 // end loop
                                 exitLoop = true;
                                 break;
                             case SequenceNumbers.Answer.Before:
                                 // duplicate, discard
-                                if (!Backtracking)
+                                if (!_backtracking)
                                 {
                                     if (_log.IsDebugEnabled)
                                         _log.Debug(
@@ -216,6 +217,12 @@ namespace Akka.Persistence.Cassandra.Query
                     }
                 }
             }
+        }
+
+        private static async Task<Fetched> FetchMoreResults(RowSet resultSet)
+        {
+            await resultSet.FetchMoreResultsAsync();
+            return Fetched.Instance;
         }
 
         private Persistent PersistentFromBytes(byte[] bytes)

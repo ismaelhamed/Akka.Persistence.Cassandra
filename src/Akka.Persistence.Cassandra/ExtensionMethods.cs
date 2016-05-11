@@ -82,43 +82,5 @@ namespace Akka.Persistence.Cassandra
             }
             return exception;
         }
-
-        public static Task<T2> OnRanToCompletion<T1, T2>(this Task<T1> task, Func<T1, T2> func)
-        {
-            return task.ContinueWith(t => func(t.Result), TaskContinuationOptions.OnlyOnRanToCompletion);
-        }
-
-        public static Task<T> OnRanToCompletion<T>(this Task task, Func<T> func)
-        {
-            return task.ContinueWith(_ => func(), TaskContinuationOptions.OnlyOnRanToCompletion);
-        }
-
-        public static Task OnRanToCompletion<T>(this Task<T> task, Action<T> action)
-        {
-            return task.ContinueWith(t => { action(t.Result); }, TaskContinuationOptions.OnlyOnRanToCompletion);
-        }
-
-        public static Task OnRanToCompletion(this Task task, Action action)
-        {
-            return task.ContinueWith(_ => { action(); }, TaskContinuationOptions.OnlyOnRanToCompletion);
-        }
-
-        /// <summary>
-        /// Schedules action if original task faulted or canceled and returns original task
-        /// </summary>
-        public static Task<T> OnFaultedOrCanceled<T>(this Task<T> task, Action<Task<T>> action)
-        {
-            task.ContinueWith(action, TaskContinuationOptions.NotOnRanToCompletion);
-            return task;
-        }
-
-        /// <summary>
-        /// Schedules action if original task faulted or canceled and returns original task
-        /// </summary>
-        public static Task OnFaultedOrCanceled(this Task task, Action<Task> action)
-        {
-            task.ContinueWith(action, TaskContinuationOptions.NotOnRanToCompletion);
-            return task;
-        }
     }
 }

@@ -106,11 +106,14 @@ namespace Akka.Persistence.Cassandra.Query
             _preparedSelectInUse = PrepareLazy(_writeStatements.SelectInUse);
             _preparedSelectDeletedTo = PrepareLazy(_writeStatements.SelectDeletedTo);
             _preparedSelectDistinctPersistenceIds = PrepareLazy(_queryStatements.SelectDistinctPersistenceIds);
-            _combinedEventsByPersistentIdStatements = new Lazy<Task<CombinedEventsByPersistenceIdStatements>>(() =>
+            _combinedEventsByPersistentIdStatements = new Lazy<Task<CombinedEventsByPersistenceIdStatements>>(async () =>
             {
-                return Task.WhenAll(_preparedSelectEventsByPersistenceId.Value, _preparedSelectInUse.Value,
-                    _preparedSelectDeletedTo.Value)
-                    .OnRanToCompletion(ps => new CombinedEventsByPersistenceIdStatements(ps[0], ps[1], ps[2]));
+                var preparedStatements =
+                    await
+                        Task.WhenAll(_preparedSelectEventsByPersistenceId.Value, _preparedSelectInUse.Value,
+                            _preparedSelectDeletedTo.Value);
+                return new CombinedEventsByPersistenceIdStatements(preparedStatements[0], preparedStatements[1],
+                    preparedStatements[2]);
             });
 
             system.RegisterOnTermination(() => _session.Close());
@@ -490,11 +493,10 @@ namespace Akka.Persistence.Cassandra.Query
             return new Lazy<Task<PreparedStatement>>(() => Prepare(statement));
         }
 
-        private Task<PreparedStatement> Prepare(string statement)
+        private async Task<PreparedStatement> Prepare(string statement)
         {
-            return
-                _session.Prepare(statement)
-                    .OnRanToCompletion(ps => ps.SetConsistencyLevel(_queryPluginConfig.ReadConsistency));
+            var preparedStatement = await _session.Prepare(statement);
+            return preparedStatement.SetConsistencyLevel(_queryPluginConfig.ReadConsistency);
         }
 
         private Source<T, NotUsed> CreateSource<T, TStatement>(Task<TStatement> preparedStatement,
